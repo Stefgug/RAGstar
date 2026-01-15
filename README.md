@@ -1,6 +1,6 @@
 # RAGstar - Repository Discovery System
 
-A simple, local, and free system to discover which repository among 100+ repos does "the thing you want to do".
+A simple, local, and free system to discover which starred repository does "the thing you want to do".
 
 ## How It Works
 
@@ -23,9 +23,9 @@ uv sync
 Edit `config.py` and add your repositories:
 ```python
 REPOSITORIES = [
-    {"name": "repo_name_1", "url": "github / awesome-copilot"},
-    {"name": "repo_name_2", "url": "HKUDS / LightRAG "},
-    {"name": "repo_name_3", "url": "trimstray / the-book-of-secret-knowledge "},
+    {"name": "repo_name_1", "url": "github/awesome-copilot"},
+    {"name": "repo_name_2", "url": "HKUDS/LightRAG"},
+    {"name": "repo_name_3", "url": "trimstray/the-book-of-secret-knowledge"},
     # Add up to 100+ repos
 ]
 ```

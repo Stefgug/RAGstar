@@ -23,11 +23,6 @@ def main():
         print("  python ingest.py view               - View all stored summaries")
         print("  python ingest.py view <repo_name>   - View summary for specific repo")
         print("  python ingest.py clear              - Clear the database (start fresh)")
-        print("\nExamples:")
-        print("  python ingest.py query 'machine learning forecasting'")
-        print("  python ingest.py view")
-        print("  python ingest.py view Forecast_2000")
-        print("  python ingest.py clear")
         return
 
     command = sys.argv[1]

@@ -46,10 +46,9 @@ def build_index():
         summary = generate_summary(repo_url, repo_name)
         print(f"  ✓ Summary generated ({len(summary)} chars)")
 
-        # Store in ChromaDB
-        # ChromaDB automatically generates embeddings using the default embedding function
+        # Store in ChromaDB (upsert = update if exists, insert if new)
         try:
-            collection.add(
+            collection.upsert(
                 ids=[repo_name],
                 documents=[summary],
                 metadatas=[{
@@ -58,7 +57,7 @@ def build_index():
                     "summary_length": len(summary)
                 }]
             )
-            print(f"  ✓ Added to database\n")
+            print(f"  ✓ Added/updated in database\n")
         except Exception as e:
             print(f"  ✗ Error storing in database: {e}\n")
 

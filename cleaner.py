@@ -12,11 +12,11 @@ def clear_database():
     Delete the entire ChromaDB database to start fresh.
     """
     db_path = Path(CHROMA_DB_PATH)
-    
+
     if not db_path.exists():
         print(f"Database at {CHROMA_DB_PATH} doesn't exist yet.")
         return
-    
+
     try:
         shutil.rmtree(db_path)
         print(f"✓ Cleared database at {CHROMA_DB_PATH}")

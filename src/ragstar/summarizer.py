@@ -1,24 +1,58 @@
-"""
-Repository Summarizer - clean rewrite
-Generates human-readable summaries using local Ollama.
-"""
+"""Repository summarization using local Ollama."""
+
+from __future__ import annotations
 
 import re
+from typing import Iterable
+
 import requests
 import gitingest
+
+from .config import settings
 
 
 # -------- Ingest helpers -------- #
 
 
-def get_repo_content(repo_url: str) -> tuple[str, str, str]:
-    """Fetch repository content via gitingest."""
-    try:
-        summary, tree, content = gitingest.ingest(repo_url)
-        return summary, tree, content
-    except Exception as exc:
-        print(f"Error fetching repo {repo_url}: {exc}")
-        return "", "", ""
+def _iter_ingest_attempts() -> list[tuple[int, str | set[str] | None, str]]:
+    max_size_bytes = max(1, settings.gitingest_max_file_size_mb) * 1024 * 1024
+
+    attempts: list[tuple[int, str | set[str] | None, str]] = []
+    include_patterns = settings.gitingest_include_patterns.strip() or None
+    attempts.append((max_size_bytes, include_patterns, "primary"))
+
+    fallback_patterns: set[str] = {
+        "**/README*",
+        "**/*.md",
+        "**/*.rst",
+        "**/*.txt",
+    }
+    fallback_size = min(max_size_bytes, 1 * 1024 * 1024)
+    attempts.append((fallback_size, fallback_patterns, "fallback:docs-only"))
+
+    return attempts
+
+
+def get_repo_content(repo_url: str) -> tuple[str, str, str] | None:
+    """Fetch repository content via gitingest with a fallback strategy."""
+    last_error: Exception | None = None
+    for max_file_size, include_patterns, label in _iter_ingest_attempts():
+        try:
+            summary, tree, content = gitingest.ingest(
+                repo_url,
+                max_file_size=max_file_size,
+                include_patterns=include_patterns,
+                token=settings.github_token,
+            )
+            return summary, tree, content
+        except Exception as exc:  # pragma: no cover - best-effort network
+            last_error = exc
+            print(
+                f"Error fetching repo {repo_url} ({label}, max_file_size={max_file_size}): {exc}"
+            )
+
+    print(f"Failed to fetch repo {repo_url} after retries: {last_error}")
+    return None
 
 
 # -------- Extraction helpers -------- #
@@ -37,13 +71,13 @@ def extract_readme(content: str) -> str:
 
 
 def extract_files(
-    content: str, max_files: int = 30, max_chars: int = 2000
+    content: str, max_files: int, max_chars: int
 ) -> list[tuple[str, str]]:
     """Extract up to max_files sections with filename and preview (max_chars)."""
     file_pattern = r"\n(?:#{1,3}\s+)([^\n]+)\n(.*?)(?=\n#{1,3}\s+|\Z)"
     files = re.findall(file_pattern, content, re.DOTALL)
 
-    skip_patterns = [
+    skip_patterns: Iterable[str] = [
         r"\.lock$",
         r"\.min\.",
         r"\.bundle\.",
@@ -104,15 +138,15 @@ def build_context_blocks(tree: str, content: str) -> tuple[str, str, str]:
     """Return (readme_block, structure_block, files_block) with clear labels."""
     readme_text = extract_readme(content)
     structure_text = tree[:3000] if tree else ""
-    files = extract_files(content)
+    files = extract_files(
+        content,
+        max_files=settings.max_files,
+        max_chars=settings.max_file_preview_chars,
+    )
 
-    # README block
     readme_block = readme_text if readme_text else "(README missing or empty)"
 
-    # Files block
-    file_chunks = []
-    for name, preview in files:
-        file_chunks.append(f"FILE: {name}\n{preview}")
+    file_chunks = [f"FILE: {name}\n{preview}" for name, preview in files]
     files_block = (
         "\n\n---\n\n".join(file_chunks)
         if file_chunks
@@ -125,24 +159,24 @@ def build_context_blocks(tree: str, content: str) -> tuple[str, str, str]:
 # -------- LLM call -------- #
 
 
-def call_ollama(prompt: str) -> str:
+def call_ollama(prompt: str) -> str | None:
     """Call local Ollama model. Returns text or None on failure."""
     try:
         resp = requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": "mistral",
+                "model": settings.ollama_model_name,
                 "prompt": prompt,
                 "stream": False,
                 "temperature": 0.4,
             },
-            timeout=90,
+            timeout=settings.ollama_timeout,
         )
         if resp.status_code == 200:
             return resp.json().get("response", "").strip()
     except requests.exceptions.ConnectionError:
         return None
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover - best-effort network
         print(f"Ollama error: {exc}")
     return None
 
@@ -153,14 +187,17 @@ def call_ollama(prompt: str) -> str:
 def generate_summary(repo_url: str, repo_name: str) -> str:
     """Generate a natural summary without hardcoded keywords."""
     print("  ⏳ Fetching repository content...")
-    summary, tree, content = get_repo_content(repo_url)
+    result = get_repo_content(repo_url)
+    if not result:
+        return ""
+
+    _, tree, content = result
     if not content:
-        return f"Could not fetch {repo_name}"
+        return ""
 
     print("  ⏳ Building context blocks...")
     readme_block, structure_block, files_block = build_context_blocks(tree, content)
 
-    # Assemble prompt blocks
     prompt_blocks = f"""
 Repository: {repo_name}
 
@@ -174,12 +211,13 @@ Repository: {repo_name}
 {files_block}
 """
 
-    # Control overall size
-    if len(prompt_blocks) > 120000:
+    if len(prompt_blocks) > settings.max_prompt_chars:
         print(f"  📏 Context {len(prompt_blocks)} chars too large; truncating...")
-        prompt_blocks = prompt_blocks[:120000] + "\n[... truncated ...]"
+        prompt_blocks = (
+            prompt_blocks[: settings.max_prompt_chars]
+            + "\n[... truncated ...]"
+        )
 
-    # Improved prompt: focus on specificity and structure
     prompt = f"""You are a technical writer writing a detailed summary for a developer knowledge base.
 
 Write a 12-15 sentence summary of {repo_name}. Be as specific and concrete as possible.

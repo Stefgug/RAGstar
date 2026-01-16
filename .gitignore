@@ -7,15 +7,13 @@ wheels/
 *.egg-info
 
 # Virtual environments
-.venv
+.venv/
 uv.lock
-ragstar_db/chroma.sqlite3
-ragstar_db/dcff05e7-4b59-4fe0-8ee3-6638294d624c/data_level0.bin
-ragstar_db/dcff05e7-4b59-4fe0-8ee3-6638294d624c/header.bin
-ragstar_db/dcff05e7-4b59-4fe0-8ee3-6638294d624c/length.bin
-ragstar_db/dcff05e7-4b59-4fe0-8ee3-6638294d624c/link_lists.bin
 .python-version
 
+# Local env files
 .env
 .envrc
+
+# Local vector DB
 ragstar_db/

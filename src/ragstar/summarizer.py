@@ -163,7 +163,7 @@ def call_ollama(prompt: str) -> str | None:
     """Call local Ollama model. Returns text or None on failure."""
     try:
         resp = requests.post(
-            "http://localhost:11434/api/generate",
+            settings.ollama_url,
             json={
                 "model": settings.ollama_model_name,
                 "prompt": prompt,

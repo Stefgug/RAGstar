@@ -16,82 +16,124 @@ Install dependencies:
 uv sync
 ```
 
-## Environment Variables
+Python support: 3.12 only (CUDA torch wheel pin).
 
-Set these in your shell, a local .env, or your shell profile (not committed):
+## Configuration (YAML)
 
-- RAGSTAR_DB_PATH (default: ./ragstar_db)
-- RAGSTAR_COLLECTION (default: repositories)
-- RAGSTAR_EMBEDDING_MODEL (default: all-MiniLM-L6-v2)
-- RAGSTAR_EMBEDDING_LOCAL_ONLY (default: false)
-- RAGSTAR_GITINGEST_MAX_FILE_SIZE_MB (default: 3)
-- RAGSTAR_GITINGEST_INCLUDE_PATTERNS (default: empty)
-- RAGSTAR_OLLAMA_MODEL (default: mistral)
-- RAGSTAR_OLLAMA_TIMEOUT (default: 180)
-- RAGSTAR_MAX_PROMPT_CHARS (default: 120000)
-- RAGSTAR_MAX_FILES (default: 30)
-- RAGSTAR_MAX_FILE_PREVIEW_CHARS (default: 2000)
-- GITHUB_TOKEN (optional, for private repos)
+RAGstar now expects a YAML config file. By default it looks for `./ragstar.yaml`,
+or you can set `RAGSTAR_CONFIG_PATH` to point elsewhere.
 
-Example (shell):
-```bash
-export RAGSTAR_DB_PATH=./ragstar_db
-export RAGSTAR_EMBEDDING_MODEL=bge-large-en-v1.5
+Example:
+```yaml
+settings:
+    chroma_db_path: ./ragstar_db
+    chroma_collection_name: repositories
+    embedding_model: all-MiniLM-L6-v2
+    embedding_local_only: false
+    gitingest_max_file_size_mb: 3
+    gitingest_include_patterns: ""
+    ollama_url: http://ollama:11434/api/generate
+    ollama_model_name: mistral
+    ollama_timeout: 180
+    max_prompt_chars: 120000
+    max_files: 30
+    max_file_preview_chars: 2000
+    github_token: ""
 ```
 
-## Usage
+`ollama_url` is required and must be set either in the YAML file or via `RAGSTAR_OLLAMA_URL`.
 
-### 1. Add Your Repositories
+## Environment Overrides (Optional)
 
-Edit [src/ragstar/config.py](src/ragstar/config.py) and add your repositories:
+You can override any setting using environment variables (useful in containers):
+
+- RAGSTAR_CONFIG_PATH (path to YAML file)
+- RAGSTAR_DB_PATH
+- RAGSTAR_COLLECTION
+- RAGSTAR_EMBEDDING_MODEL
+- RAGSTAR_EMBEDDING_LOCAL_ONLY
+- RAGSTAR_GITINGEST_MAX_FILE_SIZE_MB
+- RAGSTAR_GITINGEST_INCLUDE_PATTERNS
+- RAGSTAR_OLLAMA_URL (required if not in YAML)
+- RAGSTAR_OLLAMA_MODEL
+- RAGSTAR_OLLAMA_TIMEOUT
+- RAGSTAR_MAX_PROMPT_CHARS
+- RAGSTAR_MAX_FILES
+- RAGSTAR_MAX_FILE_PREVIEW_CHARS
+- RAGSTAR_GITHUB_TOKEN (optional, for private repos)
+
+## Usage (Python API)
+
 ```python
-REPOSITORIES = [
-    {"name": "repo_name_1", "url": "github/awesome-copilot"},
-    {"name": "repo_name_2", "url": "HKUDS/LightRAG"},
-    {"name": "repo_name_3", "url": "trimstray/the-book-of-secret-knowledge"},
-    # Add up to 100+ repos
+from ragstar import build_index, search_repositories
+
+repos = [
+    {"name": "awesome-copilot", "url": "https://github.com/github/awesome-copilot"},
+    {"name": "LightRAG", "url": "https://github.com/HKUDS/LightRAG"},
 ]
+build_index(repos)
+results = search_repositories("which repo does machine learning forecasting")
+for item in results:
+        print(item["repo_name"], item["repo_url"], item["hybrid_score"])
 ```
 
-### 2. Build the Index
+## Usage (HTTP API)
 
-This will generate summaries and build the vector database (one-time setup):
+The Docker image exposes an API on port 8000.
+
+Health check:
 ```bash
-uv run ragstar build
+curl http://localhost:8000/health
 ```
 
-This may take a few minutes on first run as it downloads the AI models (~2GB total).
-
-### 3. Query Repositories
-
-Ask natural language questions:
+Build the index (1..N repos in request body):
 ```bash
-uv run ragstar query "which repo does machine learning forecasting"
-uv run ragstar query "what repo has API endpoints"
-uv run ragstar query "which one implements real-time data processing"
+curl -X POST http://localhost:8000/build \
+    -H "Content-Type: application/json" \
+    -d '{"repositories": [{"name": "awesome-copilot", "url": "https://github.com/github/awesome-copilot"}]}'
 ```
 
-Results show:
-- Repository name and URL
-- Similarity score (higher = better match)
-- Preview of the summary
-
-### 4. View or Clear
-
+Query:
 ```bash
-uv run ragstar view
-uv run ragstar view <repo_name>
-uv run ragstar clear
+curl -X POST http://localhost:8000/query \
+    -H "Content-Type: application/json" \
+    -d '{"query": "which repo does vector search", "num_results": 5}'
 ```
+
+List summaries:
+```bash
+curl http://localhost:8000/summaries
+```
+
+Get summary by repo name:
+```bash
+curl http://localhost:8000/summaries/LightRAG
+```
+
+## Docker build speedups (CUDA + base image)
+
+The app container pulls `torch` CUDA wheels, which are large. To reduce rebuild time:
+
+1) Prebuild a dependency base layer (cached CUDA wheels):
+```bash
+docker build --target deps -t ragstar-deps:cu121 .
+```
+
+2) Build the app using the cached base:
+```bash
+docker build --cache-from ragstar-deps:cu121 -t ragstar:latest .
+```
+
+If you want a different CUDA version, change the `PIP_EXTRA_INDEX_URL` in the Dockerfile
+and the pinned `torch` version in `pyproject.toml` (currently 2.4.1).
 
 ## Architecture
 
-- **src/ragstar/config.py**: Configuration and repository list
+- **src/ragstar/config.py**: Configuration, repository list, and settings
 - **src/ragstar/summarizer.py**: Generates repository summaries using Ollama
-- **src/ragstar/config.py**: Settings, DB helpers, and maintenance
 - **src/ragstar/index.py**: Processes repos and stores in ChromaDB
 - **src/ragstar/search.py**: Searches the vector database
-- **src/ragstar/cli.py**: CLI interface
+- **src/ragstar/viewer.py**: View stored summaries
 
 ## Technical Details
 

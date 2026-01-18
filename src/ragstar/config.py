@@ -4,26 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 import os
 import shutil
 
 from chromadb import PersistentClient
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from huggingface_hub import snapshot_download
-
-
-REPOSITORIES: list[dict[str, str]] = [
-    {"name": "awesome-copilot", "url": "https://github.com/github/awesome-copilot"},
-    {"name": "LightRAG", "url": "https://github.com/HKUDS/LightRAG"},
-    {"name": "txtai", "url": "https://github.com/neuml/txtai"},
-    {"name": "github-local-actions", "url": "https://github.com/SanjulaGanepola/github-local-actions"},
-    {"name": "python-mastery", "url": "https://github.com/dabeaz-course/python-mastery"},
-    {"name": "ollama-docker", "url": "https://github.com/mythrantic/ollama-docker"},
-    {"name": "RAG_Techniques", "url": "https://github.com/NirDiamant/RAG_Techniques"},
-    {"name": "sam3", "url": "https://github.com/facebookresearch/sam3"},
-    {"name": "karpathy", "url": "https://github.com/K-Dense-AI/karpathy"},
-    {"name": "cs249r_book", "url": "https://github.com/harvard-edge/cs249r_book"},
-]
+import yaml
 
 
 @dataclass(frozen=True)
@@ -34,6 +22,7 @@ class Settings:
     embedding_local_only: bool
     gitingest_max_file_size_mb: int
     gitingest_include_patterns: str
+    ollama_url: str
     ollama_model_name: str
     ollama_timeout: int
     max_prompt_chars: int
@@ -43,26 +32,112 @@ class Settings:
 
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
+def _load_yaml_config(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise RuntimeError(
+            "RAGstar YAML config not found. Set RAGSTAR_CONFIG_PATH or "
+            "create a config file at the default path: ./ragstar.yaml"
+        )
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except Exception as exc:  # pragma: no cover - config parsing
+        raise RuntimeError(f"Failed to load YAML config at {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError(f"YAML config at {path} must be a mapping of keys.")
+    return data
+
+
+_CONFIG_PATH = Path(os.getenv("RAGSTAR_CONFIG_PATH", "./ragstar.yaml"))
+_CONFIG_DATA = _load_yaml_config(_CONFIG_PATH)
+_SETTINGS_DATA = _CONFIG_DATA.get("settings", {})
+if _SETTINGS_DATA is None:
+    _SETTINGS_DATA = {}
+if not isinstance(_SETTINGS_DATA, dict):
+    raise RuntimeError("'settings' section in YAML config must be a mapping.")
+
+
+def _get_config_value(key: str, default: Any = None) -> Any:
+    if key in _SETTINGS_DATA:
+        return _SETTINGS_DATA[key]
+    return _CONFIG_DATA.get(key, default)
+
+
+def _read_str(env_name: str, key: str, default: str | None = None) -> str | None:
+    env_value = os.getenv(env_name)
+    if env_value is not None:
+        return env_value
+    value = _get_config_value(key, default)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _read_required_str(env_name: str, key: str) -> str:
+    value = _read_str(env_name, key)
+    if value is None or not value.strip():
+        raise RuntimeError(
+            "Ollama URL must be set. Provide RAGSTAR_OLLAMA_URL or set "
+            f"'ollama_url' in {_CONFIG_PATH}."
+        )
+    return value
+
+
+def _read_int(env_name: str, key: str, default: int) -> int:
+    env_value = os.getenv(env_name)
+    if env_value is not None:
+        return int(env_value)
+    value = _get_config_value(key, default)
+    return int(value) if value is not None else default
+
+
+def _read_bool(env_name: str, key: str, default: bool) -> bool:
+    env_value = os.getenv(env_name)
+    if env_value is not None:
+        return env_value.strip().lower() in {"1", "true", "yes", "on"}
+    value = _get_config_value(key, default)
+    if isinstance(value, bool):
+        return value
     if value is None:
         return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _read_include_patterns(env_name: str, key: str, default: str = "") -> str:
+    env_value = os.getenv(env_name)
+    if env_value is not None:
+        return env_value
+    value = _get_config_value(key, default)
+    if value is None:
+        return default
+    if isinstance(value, (list, tuple, set)):
+        return ",".join(str(item) for item in value)
+    return str(value)
 
 
 settings = Settings(
-    chroma_db_path=Path(os.getenv("RAGSTAR_DB_PATH", "./ragstar_db")),
-    chroma_collection_name=os.getenv("RAGSTAR_COLLECTION", "repositories"),
-    embedding_model=os.getenv("RAGSTAR_EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
-    embedding_local_only=_env_bool("RAGSTAR_EMBEDDING_LOCAL_ONLY", False),
-    gitingest_max_file_size_mb=int(os.getenv("RAGSTAR_GITINGEST_MAX_FILE_SIZE_MB", "3")),
-    gitingest_include_patterns=os.getenv("RAGSTAR_GITINGEST_INCLUDE_PATTERNS", ""),
-    ollama_model_name=os.getenv("RAGSTAR_OLLAMA_MODEL", "mistral"),
-    ollama_timeout=int(os.getenv("RAGSTAR_OLLAMA_TIMEOUT", "180")),
-    max_prompt_chars=int(os.getenv("RAGSTAR_MAX_PROMPT_CHARS", "120000")),
-    max_files=int(os.getenv("RAGSTAR_MAX_FILES", "30")),
-    max_file_preview_chars=int(os.getenv("RAGSTAR_MAX_FILE_PREVIEW_CHARS", "2000")),
-    github_token=os.getenv("GITHUB_TOKEN", ""),
+    chroma_db_path=Path(_read_str("RAGSTAR_DB_PATH", "chroma_db_path", "./ragstar_db") or "./ragstar_db"),
+    chroma_collection_name=_read_str("RAGSTAR_COLLECTION", "chroma_collection_name", "repositories")
+    or "repositories",
+    embedding_model=_read_str("RAGSTAR_EMBEDDING_MODEL", "embedding_model", "all-MiniLM-L6-v2")
+    or "all-MiniLM-L6-v2",
+    embedding_local_only=_read_bool("RAGSTAR_EMBEDDING_LOCAL_ONLY", "embedding_local_only", False),
+    gitingest_max_file_size_mb=_read_int("RAGSTAR_GITINGEST_MAX_FILE_SIZE_MB", "gitingest_max_file_size_mb", 3),
+    gitingest_include_patterns=_read_include_patterns(
+        "RAGSTAR_GITINGEST_INCLUDE_PATTERNS",
+        "gitingest_include_patterns",
+        "",
+    ),
+    ollama_url=_read_required_str("RAGSTAR_OLLAMA_URL", "ollama_url"),
+    ollama_model_name=_read_str("RAGSTAR_OLLAMA_MODEL", "ollama_model_name", "mistral")
+    or "mistral",
+    ollama_timeout=_read_int("RAGSTAR_OLLAMA_TIMEOUT", "ollama_timeout", 180),
+    max_prompt_chars=_read_int("RAGSTAR_MAX_PROMPT_CHARS", "max_prompt_chars", 120000),
+    max_files=_read_int("RAGSTAR_MAX_FILES", "max_files", 30),
+    max_file_preview_chars=_read_int("RAGSTAR_MAX_FILE_PREVIEW_CHARS", "max_file_preview_chars", 2000),
+    github_token=_read_str("RAGSTAR_GITHUB_TOKEN", "github_token", "") or "",
 )
 
 
@@ -123,6 +198,6 @@ def clear_database() -> None:
     try:
         shutil.rmtree(db_path)
         print(f"✓ Cleared database at {db_path}")
-        print("  You can now run 'ragstar build' to rebuild from scratch.")
+        print("  You can now run build_index() to rebuild from scratch.")
     except Exception as exc:
         print(f"Error clearing database: {exc}")

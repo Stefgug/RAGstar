@@ -1,0 +1,33 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ragstar:
+    build:
+      context: .
+    container_name: ragstar
+    depends_on:
+      - ollama
+    ports:
+      - "8000:8000"
+    environment:
+      RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
+    volumes:
+      - ./ragstar.yaml:/app/ragstar.yaml:ro
+      - ragstar-db:/app/ragstar_db
+
+volumes:
+  ragstar-db:
+  ollama-data:

@@ -1,0 +1,113 @@
+"""FastAPI service for RAGstar."""
+
+from __future__ import annotations
+
+from dataclasses import asdict
+from typing import Any
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from .config import settings, get_collection
+from .index import build_index
+from .search import search_repositories
+
+app = FastAPI(title="RAGstar API", version="0.1.0")
+
+
+class QueryRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    num_results: int = Field(default=5, ge=1, le=50)
+
+
+class QueryResponse(BaseModel):
+    results: list[dict[str, Any]]
+
+
+class RepoItem(BaseModel):
+    name: str = Field(..., min_length=1)
+    url: str = Field(..., min_length=1)
+
+
+class BuildRequest(BaseModel):
+    repositories: list[RepoItem] = Field(..., min_length=1)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/config")
+def get_config() -> dict[str, Any]:
+    data = asdict(settings)
+    data["chroma_db_path"] = str(settings.chroma_db_path)
+    return data
+
+
+@app.post("/build")
+def build(payload: BuildRequest) -> dict[str, Any]:
+    repos = [repo.model_dump() for repo in payload.repositories]
+    results = build_index(repos)
+    stored = sum(1 for item in results if item.get("status") == "stored")
+    skipped = sum(1 for item in results if item.get("status") == "skipped")
+    errored = sum(1 for item in results if item.get("status") == "error")
+    return {
+        "status": "completed",
+        "count": len(repos),
+        "stored": stored,
+        "skipped": skipped,
+        "errored": errored,
+        "results": results,
+    }
+
+
+@app.post("/query", response_model=QueryResponse)
+def query_repositories(payload: QueryRequest) -> QueryResponse:
+    results = search_repositories(payload.query, num_results=payload.num_results)
+    return QueryResponse(results=results)
+
+
+@app.get("/summaries")
+def list_summaries() -> dict[str, Any]:
+    collection = get_collection()
+    all_items = collection.get()
+    if not all_items.get("ids"):
+        return {"count": 0, "items": []}
+
+    items = []
+    for repo_id, document, metadata in zip(
+        all_items["ids"],
+        all_items["documents"],
+        all_items["metadatas"],
+    ):
+        items.append(
+            {
+                "repo_id": repo_id,
+                "repo_name": metadata.get("repo_name"),
+                "repo_url": metadata.get("repo_url"),
+                "summary_length": metadata.get("summary_length"),
+                "summary": document,
+            }
+        )
+
+    return {"count": len(items), "items": items}
+
+
+@app.get("/summaries/{repo_name}")
+def get_summary(repo_name: str) -> dict[str, Any]:
+    collection = get_collection()
+    result = collection.get(ids=[repo_name])
+    if not result.get("ids"):
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    metadata = result["metadatas"][0]
+    document = result["documents"][0]
+
+    return {
+        "repo_id": result["ids"][0],
+        "repo_name": metadata.get("repo_name"),
+        "repo_url": metadata.get("repo_url"),
+        "summary_length": metadata.get("summary_length"),
+        "summary": document,
+    }

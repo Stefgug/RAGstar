@@ -14,7 +14,7 @@ def view_all_summaries() -> None:
         all_items = collection.get()
 
         if not all_items.get("ids"):
-            print("No repositories stored yet. Run 'ragstar build' first.")
+            print("No repositories stored yet. Run build_index() first.")
             return
 
         print(f"\n{'='*80}")
@@ -33,7 +33,7 @@ def view_all_summaries() -> None:
 
     except Exception as exc:
         print(f"Error: {exc}")
-        print("Make sure to run 'ragstar build' first to build the index.")
+        print("Make sure to run build_index() first to build the index.")
 
 
 def view_summary_by_name(repo_name: str) -> None:
@@ -58,4 +58,4 @@ def view_summary_by_name(repo_name: str) -> None:
 
     except Exception as exc:
         print(f"Error: {exc}")
-        print("Make sure to run 'ragstar build' first to build the index.")
+        print("Make sure to run build_index() first to build the index.")

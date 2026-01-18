@@ -3,18 +3,19 @@ name = "ragstar"
 version = "0.2.0"
 description = "Repository discovery via vector search"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "gitingest>=0.3.1",
     "chromadb>=0.4.0",
     "sentence-transformers>=2.2.0",
     "transformers>=4.30.0",
-    "torch>=2.0.0",
+    "torch==2.4.1",
     "requests>=2.31.0",
+    "PyYAML>=6.0.1",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "pydantic>=2.6.0",
 ]
-
-[project.scripts]
-ragstar = "ragstar.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

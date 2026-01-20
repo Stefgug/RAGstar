@@ -1,4 +1,5 @@
-FROM python:3.12-slim AS deps
+# Optimized production Dockerfile for Python application using uv
+FROM python:3.12.8-slim AS deps
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,8 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Copy uv binary from official distroless image (pinable via tag if desired)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Copy uv binary from pinned version for reproducibility
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /bin/
 
 # Copy project files (including lockfile)
 COPY pyproject.toml uv.lock /app/
@@ -27,25 +28,36 @@ COPY README.md ragstar.yaml /app/
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv sync --frozen --no-dev
 
-FROM python:3.12-slim
+# Final production stage with minimal footprint
+FROM python:3.12.8-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    RAGSTAR_CONFIG_PATH=/app/ragstar.yaml
+    RAGSTAR_CONFIG_PATH=/app/ragstar.yaml \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
-# Install git for runtime gitingest
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Install runtime dependencies and clean up in single layer
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-COPY --from=builder /app/.venv /app/.venv
-COPY src /app/src
-COPY README.md ragstar.yaml /app/
+# Copy virtual environment and application files
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser src /app/src
+COPY --chown=appuser:appuser README.md ragstar.yaml /app/
 
-ENV PATH="/app/.venv/bin:$PATH"
+# Switch to non-root user
+USER appuser
 
 EXPOSE 8000
 
+# Use exec form for proper signal handling
 CMD ["uvicorn", "ragstar.api:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -24,9 +24,36 @@ services:
       - "8000:8000"
     environment:
       RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
+      RAGSTAR_OLLAMA_URL: http://ollama:11434/api/generate
     volumes:
       - ./ragstar.yaml:/app/ragstar.yaml:ro
       - ragstar-db:/app/ragstar_db
+
+  ragstar-dev:
+    build:
+      context: .
+    container_name: ragstar-dev
+    depends_on:
+      - ollama
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - "8000:8000"
+    environment:
+      RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
+      RAGSTAR_OLLAMA_URL: http://ollama:11434/api/generate
+    volumes:
+      - ./src:/app/src
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./ragstar.yaml:/app/ragstar.yaml:ro
+      - ragstar-db:/app/ragstar_db
+    working_dir: /app
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        cd /app && uv sync && uvicorn ragstar.api:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
 
 volumes:
   ragstar-db:

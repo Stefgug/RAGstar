@@ -33,6 +33,7 @@ settings:
     gitingest_max_file_size_mb: 3
     gitingest_include_patterns: ""
     ollama_url: http://ollama:11434/api/generate
+    ollama_pull_url: http://ollama:11434/api/pull
     ollama_model_name: mistral
     ollama_timeout: 180
     max_prompt_chars: 120000
@@ -55,6 +56,7 @@ You can override any setting using environment variables (useful in containers):
 - RAGSTAR_GITINGEST_MAX_FILE_SIZE_MB
 - RAGSTAR_GITINGEST_INCLUDE_PATTERNS
 - RAGSTAR_OLLAMA_URL (required if not in YAML)
+- RAGSTAR_OLLAMA_PULL_URL
 - RAGSTAR_OLLAMA_MODEL
 - RAGSTAR_OLLAMA_TIMEOUT
 - RAGSTAR_MAX_PROMPT_CHARS
@@ -108,6 +110,13 @@ curl http://localhost:8000/summaries
 Get summary by repo name:
 ```bash
 curl http://localhost:8000/summaries/LightRAG
+```
+
+Pull an Ollama model on demand:
+```bash
+curl -X POST http://localhost:8000/ollama/pull \
+    -H "Content-Type: application/json" \
+    -d '{"model": "mistral"}'
 ```
 
 ## Docker build speedups (CUDA + base image)

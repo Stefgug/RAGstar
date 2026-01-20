@@ -23,6 +23,7 @@ class Settings:
     gitingest_max_file_size_mb: int
     gitingest_include_patterns: str
     ollama_url: str
+    ollama_pull_url: str
     ollama_model_name: str
     ollama_timeout: int
     max_prompt_chars: int
@@ -85,6 +86,13 @@ def _read_required_str(env_name: str, key: str) -> str:
     return value
 
 
+def _derive_ollama_pull_url(generate_url: str) -> str:
+    trimmed = generate_url.rstrip("/")
+    if trimmed.endswith("/api/generate"):
+        return trimmed[: -len("/api/generate")] + "/api/pull"
+    return f"{trimmed}/api/pull"
+
+
 def _read_int(env_name: str, key: str, default: int) -> int:
     env_value = os.getenv(env_name)
     if env_value is not None:
@@ -117,6 +125,7 @@ def _read_include_patterns(env_name: str, key: str, default: str = "") -> str:
     return str(value)
 
 
+_ollama_url = _read_required_str("RAGSTAR_OLLAMA_URL", "ollama_url")
 settings = Settings(
     chroma_db_path=Path(_read_str("RAGSTAR_DB_PATH", "chroma_db_path", "./ragstar_db") or "./ragstar_db"),
     chroma_collection_name=_read_str("RAGSTAR_COLLECTION", "chroma_collection_name", "repositories")
@@ -130,7 +139,13 @@ settings = Settings(
         "gitingest_include_patterns",
         "",
     ),
-    ollama_url=_read_required_str("RAGSTAR_OLLAMA_URL", "ollama_url"),
+    ollama_url=_ollama_url,
+    ollama_pull_url=_read_str(
+        "RAGSTAR_OLLAMA_PULL_URL",
+        "ollama_pull_url",
+        _derive_ollama_pull_url(_ollama_url),
+    )
+    or _derive_ollama_pull_url(_ollama_url),
     ollama_model_name=_read_str("RAGSTAR_OLLAMA_MODEL", "ollama_model_name", "mistral")
     or "mistral",
     ollama_timeout=_read_int("RAGSTAR_OLLAMA_TIMEOUT", "ollama_timeout", 180),

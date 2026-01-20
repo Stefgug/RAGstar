@@ -8,9 +8,10 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from .config import settings, get_collection
+from .config import settings, get_collection, clear_database
 from .index import build_index
 from .search import search_repositories
+from .summarizer import pull_ollama_model
 
 app = FastAPI(title="RAGstar API", version="0.1.0")
 
@@ -31,6 +32,10 @@ class RepoItem(BaseModel):
 
 class BuildRequest(BaseModel):
     repositories: list[RepoItem] = Field(..., min_length=1)
+
+
+class OllamaPullRequest(BaseModel):
+    model: str | None = Field(default=None, min_length=1)
 
 
 @app.get("/health")
@@ -111,3 +116,21 @@ def get_summary(repo_name: str) -> dict[str, Any]:
         "summary_length": metadata.get("summary_length"),
         "summary": document,
     }
+
+
+@app.post("/clear")
+def clear_db() -> dict[str, Any]:
+    clear_database()
+    return {
+        "status": "cleared",
+        "chroma_db_path": str(settings.chroma_db_path),
+    }
+
+
+@app.post("/ollama/pull")
+def pull_model(payload: OllamaPullRequest) -> dict[str, Any]:
+    model_name = payload.model or settings.ollama_model_name
+    ok = pull_ollama_model(model_name)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to pull Ollama model")
+    return {"status": "pulled", "model": model_name}

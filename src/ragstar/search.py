@@ -83,16 +83,3 @@ def search_repositories(
         result["summary"] = summary[:200] + "..." if len(summary) > 200 else summary
 
     return hybrid_results[:num_results]
-
-
-def display_results(results: list[dict[str, object]]) -> None:
-    print(f"\nFound {len(results)} matching repositories:\n")
-
-    for idx, result in enumerate(results, 1):
-        print(f"{idx}. {result['repo_name']}")
-        print(f"   URL: {result['repo_url']}")
-        print(f"   Hybrid Score: {result['hybrid_score']*100:.1f}%")
-        print(
-            f"   Dense: {result['dense_score']*100:.1f}% | BM25: {result['bm25_score']*100:.1f}%"
-        )
-        print(f"   Summary: {result['summary']}\n")

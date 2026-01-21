@@ -68,24 +68,17 @@ You can override any setting using environment variables (useful in containers):
 - RAGSTAR_MAX_FILE_PREVIEW_CHARS
 - RAGSTAR_GITHUB_TOKEN (optional, for private repos)
 
-## Usage (Python API)
-
-```python
-from ragstar import build_index, search_repositories
-
-repos = [
-    {"name": "awesome-copilot", "url": "https://github.com/github/awesome-copilot"},
-    {"name": "LightRAG", "url": "https://github.com/HKUDS/LightRAG"},
-]
-build_index(repos)
-results = search_repositories("which repo does machine learning forecasting")
-for item in results:
-        print(item["repo_name"], item["repo_url"], item["hybrid_score"])
-```
-
 ## Usage (HTTP API)
 
-The Docker image exposes an API on port 8000.
+The RAGstar API is designed for Docker deployment and exposes endpoints on port 8000.
+
+### Quick Start with Docker Compose
+
+```bash
+docker-compose up -d
+```
+
+This starts both Ollama (for LLM summarization) and RAGstar API services.
 
 Health check:
 ```bash
@@ -142,11 +135,13 @@ and the pinned `torch` version in `pyproject.toml` (currently 2.4.1).
 
 ## Architecture
 
-- **src/ragstar/config.py**: Configuration, repository list, and settings
+RAGstar is designed as a containerized API service with the following components:
+
+- **src/ragstar/api.py**: FastAPI REST endpoints for building indexes and querying
+- **src/ragstar/config.py**: YAML-based configuration and ChromaDB client
 - **src/ragstar/summarizer.py**: Generates repository summaries using Ollama
-- **src/ragstar/index.py**: Processes repos and stores in ChromaDB
-- **src/ragstar/search.py**: Searches the vector database
-- **src/ragstar/viewer.py**: View stored summaries
+- **src/ragstar/index.py**: Processes repositories and stores in ChromaDB
+- **src/ragstar/search.py**: Hybrid search (BM25 + dense embeddings) over vector database
 
 ## Technical Details
 

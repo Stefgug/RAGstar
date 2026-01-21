@@ -10,9 +10,6 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
     print(f"Initializing ChromaDB at {settings.chroma_db_path}...\n")
     collection = get_collection()
 
-    if not repositories:
-        raise ValueError("At least one repository is required to build the index.")
-
     print(f"Building index for {len(repositories)} repositories...\n")
 
     results: list[dict[str, object]] = []

@@ -39,7 +39,7 @@ services:
       - 1.1.1.1
       - 8.8.8.8
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
       RAGSTAR_OLLAMA_URL: http://ollama:11434/api/generate

@@ -16,7 +16,7 @@ Install dependencies:
 uv sync
 ```
 
-Python support: 3.12 only (CUDA torch wheel pin).
+Python support: CPython >=3.12,<3.13 (3.12.x supported). The Docker image pins Python 3.12.8 for CUDA compatibility with the torch wheel.
 
 ## Configuration (YAML)
 
@@ -32,6 +32,10 @@ settings:
     embedding_local_only: false
     gitingest_max_file_size_mb: 3
     gitingest_include_patterns: ""
+    # Default Ollama endpoints use Docker service name "ollama".
+    # For local (non-Docker) Ollama, use:
+    #   ollama_url: http://localhost:11434/api/generate
+    #   ollama_pull_url: http://localhost:11434/api/pull
     ollama_url: http://ollama:11434/api/generate
     ollama_pull_url: http://ollama:11434/api/pull
     ollama_model_name: mistral

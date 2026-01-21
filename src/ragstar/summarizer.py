@@ -142,7 +142,15 @@ def extract_readme(content: str) -> str:
 def extract_root_docs(
     content: str, max_files: int, max_chars: int
 ) -> list[tuple[str, str]]:
-    """Extract root-level .toml or .txt file sections with previews."""
+    """Extract root-level .toml or .txt file sections with previews.
+    
+    This function intentionally filters to only .toml and .txt files to focus
+    on configuration and documentation metadata. This is more restrictive than
+    previous implementations that included code files (.py, .js), but provides
+    focused context for LLM summarization.
+    
+    To capture additional file types, modify the wanted() function below.
+    """
     sections = _parse_file_sections(content)
 
     def is_root_file(name: str) -> bool:
@@ -252,6 +260,16 @@ def call_ollama(prompt: str) -> str | None:
                 )
                 if retry.status_code == 200:
                     return retry.json().get("response", "").strip()
+                # Retry after successful pull failed; log for visibility.
+                print(
+                    f"Ollama retry failed after pull ({retry.status_code}): {retry.text}"
+                )
+            else:
+                # Model pull failed; log that no successful retry could be performed.
+                print(
+                    f"Ollama model pull failed; cannot retry request for model "
+                    f"{settings.ollama_model_name!r}"
+                )
     except requests.exceptions.ConnectionError:
         return None
     except Exception as exc:  # pragma: no cover - best-effort network
@@ -314,9 +332,9 @@ Structure your response in clear sections:
 Specificity over vagueness. Instead of "data tool" say "processes 1M+ events/sec" or "manages time-series with 99.9% uptime".
 Only use information from the README and root-level .toml/.txt files shown below.
 DO NOT mention installation steps or configuration details.
-DO NOT INCLUDE ANY MARKDOWN FORMATTING IN YOUR RESPONSE OR URL OR HTTP BALISE. ONLY HUMAN READABLE TEXT.
+DO NOT INCLUDE ANY MARKDOWN FORMATTING, URLS, OR HTML TAGS IN YOUR RESPONSE. ONLY HUMAN READABLE TEXT.
 DO NOT add artificial padding. Use all 3-10 sentences to be informative.
-NO NEED TO SPECIFY No root .toml/.txt files captured
+Do not mention if no root .toml/.txt files were found.
 
 {prompt_blocks}
 

@@ -21,6 +21,7 @@ htmlcov
 .git
 .gitignore
 .gitattributes
+.github
 
 # IDE
 .vscode
@@ -40,12 +41,18 @@ docker-compose*.yml
 
 # Documentation
 *.md
+README*
 
 # Data and logs
 data/
 logs/
 *.log
+ragstar_db/
 
 # Environment
 .env
 .env.*
+
+# Lock files (only pyproject.toml is needed)
+uv.lock
+.python-version

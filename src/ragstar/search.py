@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from typing import Any
 
 from .config import get_collection
 
@@ -85,14 +86,61 @@ def search_repositories(
     return hybrid_results[:num_results]
 
 
-def display_results(results: list[dict[str, object]]) -> None:
-    print(f"\nFound {len(results)} matching repositories:\n")
+def get_summary_by_name(repo_name: str) -> dict[str, Any] | None:
+    """Get a single repository summary by name.
 
-    for idx, result in enumerate(results, 1):
-        print(f"{idx}. {result['repo_name']}")
-        print(f"   URL: {result['repo_url']}")
-        print(f"   Hybrid Score: {result['hybrid_score']*100:.1f}%")
-        print(
-            f"   Dense: {result['dense_score']*100:.1f}% | BM25: {result['bm25_score']*100:.1f}%"
+    Args:
+        repo_name: The name/ID of the repository to retrieve
+
+    Returns:
+        Dictionary with keys: repo_id, repo_name, repo_url, summary_length, summary
+        or None if the repository is not found
+    """
+    collection = get_collection()
+    result = collection.get(ids=[repo_name])
+    if not result.get("ids"):
+        return None
+
+    metadata = result["metadatas"][0]
+    document = result["documents"][0]
+
+    return {
+        "repo_id": result["ids"][0],
+        "repo_name": metadata.get("repo_name"),
+        "repo_url": metadata.get("repo_url"),
+        "summary_length": metadata.get("summary_length"),
+        "summary": document,
+    }
+
+
+def list_all_summaries() -> dict[str, Any]:
+    """List all stored repository summaries.
+
+    Returns:
+        Dictionary with two keys:
+        - 'count': Number of stored repositories
+        - 'items': List of dictionaries, each containing repo_id, repo_name,
+                   repo_url, summary_length, and summary
+    """
+    collection = get_collection()
+    all_items = collection.get()
+    if not all_items.get("ids"):
+        return {"count": 0, "items": []}
+
+    items = []
+    for repo_id, document, metadata in zip(
+        all_items["ids"],
+        all_items["documents"],
+        all_items["metadatas"],
+    ):
+        items.append(
+            {
+                "repo_id": repo_id,
+                "repo_name": metadata.get("repo_name"),
+                "repo_url": metadata.get("repo_url"),
+                "summary_length": metadata.get("summary_length"),
+                "summary": document,
+            }
         )
-        print(f"   Summary: {result['summary']}\n")
+
+    return {"count": len(items), "items": items}

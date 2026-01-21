@@ -14,11 +14,15 @@ from pathlib import Path
 from typing import Any
 import os
 import shutil
+import logging
 
 from chromadb import PersistentClient
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from huggingface_hub import snapshot_download
 import yaml
+
+# Module logger - configuration should be done at application level
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -185,7 +189,7 @@ def get_collection():
     model_path = Path(model_source)
     if model_path.exists():
         model_source = str(model_path)
-        print(f"Using local embedding model path: {model_source}")
+        logger.info(f"Using local embedding model path: {model_source}")
     else:
         try:
             local_path = snapshot_download(
@@ -193,7 +197,7 @@ def get_collection():
                 local_files_only=True,
             )
             model_source = local_path
-            print(f"Using locally cached embedding model at {local_path}")
+            logger.info(f"Using locally cached embedding model at {local_path}")
         except Exception:
             if settings.embedding_local_only:
                 raise RuntimeError(
@@ -201,7 +205,7 @@ def get_collection():
                     "Prefetch it with snapshot_download(...) or set "
                     "RAGSTAR_EMBEDDING_MODEL to a local path."
                 )
-            print(
+            logger.info(
                 f"Embedding model '{settings.embedding_model}' not found in local cache; "
                 "will download from Hugging Face if required."
             )
@@ -221,12 +225,11 @@ def clear_database() -> None:
     db_path = Path(settings.chroma_db_path)
 
     if not db_path.exists():
-        print(f"Database at {db_path} doesn't exist yet.")
+        logger.info(f"Database at {db_path} doesn't exist yet.")
         return
 
     try:
         shutil.rmtree(db_path)
-        print(f"✓ Cleared database at {db_path}")
-        print("  You can now run build_index() to rebuild from scratch.")
+        logger.info(f"Cleared database at {db_path}")
     except Exception as exc:
-        print(f"Error clearing database: {exc}")
+        logger.error(f"Error clearing database: {exc}")

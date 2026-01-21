@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import asdict
 from typing import Any
 
@@ -10,8 +12,19 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from .config import settings, get_collection, clear_database
 from .index import build_index
-from .search import search_repositories
+from .search import search_repositories, get_summary_by_name, list_all_summaries
 from .summarizer import pull_ollama_model
+
+# Configure logging at application level
+log_level_str = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()
+# Validate log level and fallback to INFO if invalid
+valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+log_level = getattr(logging, log_level_str if log_level_str in valid_levels else "INFO")
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAGstar API", version="0.1.0")
 
@@ -92,47 +105,15 @@ def query_repositories(payload: QueryRequest) -> QueryResponse:
 
 @app.get("/summaries")
 def list_summaries() -> dict[str, Any]:
-    collection = get_collection()
-    all_items = collection.get()
-    if not all_items.get("ids"):
-        return {"count": 0, "items": []}
-
-    items = []
-    for repo_id, document, metadata in zip(
-        all_items["ids"],
-        all_items["documents"],
-        all_items["metadatas"],
-    ):
-        items.append(
-            {
-                "repo_id": repo_id,
-                "repo_name": metadata.get("repo_name"),
-                "repo_url": metadata.get("repo_url"),
-                "summary_length": metadata.get("summary_length"),
-                "summary": document,
-            }
-        )
-
-    return {"count": len(items), "items": items}
+    return list_all_summaries()
 
 
 @app.get("/summaries/{repo_name}")
 def get_summary(repo_name: str) -> dict[str, Any]:
-    collection = get_collection()
-    result = collection.get(ids=[repo_name])
-    if not result.get("ids"):
+    result = get_summary_by_name(repo_name)
+    if not result:
         raise HTTPException(status_code=404, detail="Repository not found")
-
-    metadata = result["metadatas"][0]
-    document = result["documents"][0]
-
-    return {
-        "repo_id": result["ids"][0],
-        "repo_name": metadata.get("repo_name"),
-        "repo_url": metadata.get("repo_url"),
-        "summary_length": metadata.get("summary_length"),
-        "summary": document,
-    }
+    return result
 
 
 @app.post("/clear")

@@ -1,7 +1,7 @@
 # Copilot Instructions for RAGstar
 
 ## Project Overview
-RAGstar is a local repository discovery system using vector search. It summarizes GitHub repositories and enables natural language queries to find the right repo.
+RAGstar is a local repository discovery system using hybrid search (BM25 + dense embeddings). It summarizes GitHub repositories via local Ollama and enables natural language queries.
 
 ## Essential Guidelines
 
@@ -17,25 +17,35 @@ RAGstar is a local repository discovery system using vector search. It summarize
 - Avoid adding new dependencies unless essential
 
 ### Project Structure
-- `src/ragstar/cli.py` - Command-line interface
-- `src/ragstar/config.py` - Settings and repository list
-- `src/ragstar/index.py` - Build vector index
-- `src/ragstar/search.py` - Query vector database
-- `src/ragstar/summarizer.py` - Generate repo summaries via Ollama
+- `src/ragstar/cli.py` - Command-line interface (argparse subcommands)
+- `src/ragstar/config.py` - Settings, repository list, ChromaDB helpers
+- `src/ragstar/index.py` - Build vector index from repo summaries
+- `src/ragstar/search.py` - Hybrid search (BM25 + dense embeddings)
+- `src/ragstar/summarizer.py` - Generate summaries via Ollama, fetch content via gitingest
 - `src/ragstar/viewer.py` - View stored summaries
 
 ### Configuration
 - Settings via environment variables (see README)
-- Repository list in `config.py` as `REPOSITORIES`
+- Repository list in `config.py` as `REPOSITORIES` (list of dicts with name/url)
 - Local ChromaDB (no external services)
+- Supports offline mode for embedding models
 
 ### Code Patterns
-- Use `Settings` dataclass for all config
-- ChromaDB operations via helper functions in `config.py`
-- CLI uses argparse with subcommands
+- Use `Settings` dataclass (frozen=True) for all config
+- ChromaDB operations via `get_collection()` helper in `config.py`
+- CLI uses argparse with subcommands (build, query, view, clear)
 - Keep main logic in library code, not in CLI
+- Implement fallback strategies for network operations (see summarizer)
+- Return `None` or empty results on failure, print errors to console
+
+### Search & Summarization
+- Hybrid search combines BM25 (lexical) and dense embeddings (semantic)
+- Default weights: 60% BM25, 40% dense (configurable)
+- Summaries generated via local Ollama API (requests library)
+- Repo content fetched via gitingest with fallback to docs-only
 
 ### Simplicity
 - Prefer readability over cleverness
 - Local-first, no cloud dependencies
-- Minimal error handling - fail fast and clear
+- Print progress and errors to console
+- Fail gracefully with informative messages

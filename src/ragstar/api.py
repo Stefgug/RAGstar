@@ -40,8 +40,11 @@ class OllamaPullRequest(BaseModel):
     @field_validator("model")
     @classmethod
     def validate_model(cls, v: str | None) -> str | None:
-        if v is not None and len(v.strip()) == 0:
-            raise ValueError("model must be a non-empty string or None")
+        if v is not None:
+            stripped = v.strip()
+            if len(stripped) == 0:
+                raise ValueError("model must be a non-empty string or None")
+            return stripped
         return v
 
 

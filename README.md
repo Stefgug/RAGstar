@@ -53,6 +53,7 @@ settings:
 You can override any setting using environment variables (useful in containers):
 
 - RAGSTAR_CONFIG_PATH (path to YAML file)
+- RAGSTAR_LOG_LEVEL (logging level: DEBUG, INFO, WARNING, ERROR; default: INFO)
 - RAGSTAR_DB_PATH
 - RAGSTAR_COLLECTION
 - RAGSTAR_EMBEDDING_MODEL

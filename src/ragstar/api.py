@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import asdict
 from typing import Any
 
@@ -12,6 +14,14 @@ from .config import settings, get_collection, clear_database
 from .index import build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
 from .summarizer import pull_ollama_model
+
+# Configure logging at application level
+log_level = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, log_level, logging.INFO),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAGstar API", version="0.1.0")
 

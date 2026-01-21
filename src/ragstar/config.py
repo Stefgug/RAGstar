@@ -21,11 +21,7 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 from huggingface_hub import snapshot_download
 import yaml
 
-# Configure logging for API deployment
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Module logger - configuration should be done at application level
 logger = logging.getLogger(__name__)
 
 

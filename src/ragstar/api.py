@@ -16,9 +16,12 @@ from .search import search_repositories, get_summary_by_name, list_all_summaries
 from .summarizer import pull_ollama_model
 
 # Configure logging at application level
-log_level = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()
+log_level_str = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()
+# Validate log level and fallback to INFO if invalid
+valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+log_level = getattr(logging, log_level_str if log_level_str in valid_levels else "INFO")
 logging.basicConfig(
-    level=getattr(logging, log_level, logging.INFO),
+    level=log_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import re
+import logging
 from typing import Iterable
 
 import requests
 import gitingest
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 
 # -------- Ingest helpers -------- #
@@ -47,11 +50,11 @@ def get_repo_content(repo_url: str) -> tuple[str, str, str] | None:
             return summary, tree, content
         except Exception as exc:  # pragma: no cover - best-effort network
             last_error = exc
-            print(
-                f"Error fetching repo {repo_url} ({label}, max_file_size={max_file_size}): {exc}"
+            logger.debug(
+                f"Failed to fetch {repo_url} ({label}, max_file_size={max_file_size}): {exc}"
             )
 
-    print(f"Failed to fetch repo {repo_url} after retries: {last_error}")
+    logger.warning(f"Failed to fetch {repo_url} after all retries: {last_error}")
     return None
 
 
@@ -225,9 +228,9 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
         )
         if resp.status_code == 200:
             return True
-        print(f"Ollama pull failed ({resp.status_code}): {resp.text}")
+        logger.error(f"Ollama pull failed ({resp.status_code}): {resp.text}")
     except Exception as exc:  # pragma: no cover - best-effort network
-        print(f"Ollama pull error: {exc}")
+        logger.error(f"Ollama pull error: {exc}")
     return False
 
 
@@ -260,20 +263,18 @@ def call_ollama(prompt: str) -> str | None:
                 )
                 if retry.status_code == 200:
                     return retry.json().get("response", "").strip()
-                # Retry after successful pull failed; log for visibility.
-                print(
+                logger.error(
                     f"Ollama retry failed after pull ({retry.status_code}): {retry.text}"
                 )
             else:
-                # Model pull failed; log that no successful retry could be performed.
-                print(
+                logger.error(
                     f"Ollama model pull failed; cannot retry request for model "
                     f"{settings.ollama_model_name!r}"
                 )
     except requests.exceptions.ConnectionError:
         return None
     except Exception as exc:  # pragma: no cover - best-effort network
-        print(f"Ollama error: {exc}")
+        logger.error(f"Ollama error: {exc}")
     return None
 
 
@@ -282,7 +283,7 @@ def call_ollama(prompt: str) -> str | None:
 
 def generate_summary(repo_url: str, repo_name: str) -> str:
     """Generate a summary based on README and root .toml/.txt files only."""
-    print("  ⏳ Fetching repository content...")
+    logger.debug(f"Fetching repository content for {repo_name}")
     result = get_repo_content(repo_url)
     if not result:
         return ""
@@ -291,7 +292,7 @@ def generate_summary(repo_url: str, repo_name: str) -> str:
     if not content:
         return ""
 
-    print("  ⏳ Building context blocks...")
+    logger.debug(f"Building context blocks for {repo_name}")
     readme_block, docs_block = build_context_blocks(content)
 
     prompt_blocks = f"""
@@ -305,7 +306,7 @@ Repository: {repo_name}
 """
 
     if len(prompt_blocks) > settings.max_prompt_chars:
-        print(f"  📏 Context {len(prompt_blocks)} chars too large; truncating...")
+        logger.debug(f"Context for {repo_name} is {len(prompt_blocks)} chars, truncating")
         prompt_blocks = (
             prompt_blocks[: settings.max_prompt_chars]
             + "\n[... truncated ...]"
@@ -340,11 +341,11 @@ Do not mention if no root .toml/.txt files were found.
 
 Summary:"""
 
-    print("  ⏳ Generating summary with LLM...")
+    logger.debug(f"Generating summary with LLM for {repo_name}")
     summary_text = call_ollama(prompt)
     if summary_text:
         return summary_text
 
-    print("  ⚠️  Ollama not available; returning context preview.")
+    logger.warning(f"Ollama not available for {repo_name}, returning context preview")
     fallback = f"README: {readme_block}\n\nROOT_DOCS: {docs_block[:800]}"
     return fallback

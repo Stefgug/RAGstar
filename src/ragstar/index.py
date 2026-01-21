@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+
 from .config import settings, get_collection
 from .summarizer import generate_summary
 
+logger = logging.getLogger(__name__)
+
 
 def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
-    print(f"Initializing ChromaDB at {settings.chroma_db_path}...\n")
+    logger.info(f"Initializing ChromaDB at {settings.chroma_db_path}")
     collection = get_collection()
 
-    print(f"Building index for {len(repositories)} repositories...\n")
+    logger.info(f"Building index for {len(repositories)} repositories")
 
     results: list[dict[str, object]] = []
 
@@ -18,11 +22,11 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
         repo_name = repo["name"]
         repo_url = repo["url"]
 
-        print(f"[{idx}/{len(repositories)}] Processing: {repo_name}")
+        logger.info(f"[{idx}/{len(repositories)}] Processing: {repo_name}")
 
         summary = generate_summary(repo_url, repo_name)
         if not summary:
-            print("  ✗ Summary skipped (fetch failed)")
+            logger.warning(f"Summary skipped for {repo_name} (fetch failed)")
             results.append(
                 {
                     "repo_name": repo_name,
@@ -33,7 +37,7 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
             )
             continue
 
-        print(f"  ✓ Summary generated ({len(summary)} chars)")
+        logger.info(f"Summary generated for {repo_name} ({len(summary)} chars)")
 
         try:
             collection.upsert(
@@ -45,7 +49,7 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
                     "summary_length": len(summary),
                 }],
             )
-            print("  ✓ Added/updated in database\n")
+            logger.info(f"Added/updated {repo_name} in database")
             results.append(
                 {
                     "repo_name": repo_name,
@@ -55,7 +59,7 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
                 }
             )
         except Exception as exc:
-            print(f"  ✗ Error storing in database: {exc}\n")
+            logger.error(f"Error storing {repo_name} in database: {exc}")
             results.append(
                 {
                     "repo_name": repo_name,
@@ -65,5 +69,5 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
                 }
             )
 
-    print(f"Index building complete! Stored in {settings.chroma_db_path}")
+    logger.info(f"Index building complete! Stored in {settings.chroma_db_path}")
     return results

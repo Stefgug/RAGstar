@@ -88,7 +88,7 @@ def search_repositories(
 
 def get_summary_by_name(repo_name: str) -> dict[str, Any] | None:
     """Get a single repository summary by name.
-    
+
     Returns a dictionary with repo details and summary, or None if not found.
     """
     collection = get_collection()
@@ -110,7 +110,7 @@ def get_summary_by_name(repo_name: str) -> dict[str, Any] | None:
 
 def list_all_summaries() -> dict[str, Any]:
     """List all stored repository summaries.
-    
+
     Returns a dictionary with count and list of all summaries.
     """
     collection = get_collection()

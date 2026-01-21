@@ -34,6 +34,13 @@ class Settings:
 
 
 def _load_yaml_config(path: Path) -> dict[str, Any]:
+    """Load YAML configuration from the specified path.
+    
+    Note: The default config path is relative to the current working directory.
+    In containerized environments, this is controlled by WORKDIR. For local
+    development, run from the project root or set RAGSTAR_CONFIG_PATH to an
+    absolute path.
+    """
     if not path.exists():
         raise RuntimeError(
             "RAGstar YAML config not found. Set RAGSTAR_CONFIG_PATH or "
@@ -80,8 +87,8 @@ def _read_required_str(env_name: str, key: str) -> str:
     value = _read_str(env_name, key)
     if value is None or not value.strip():
         raise RuntimeError(
-            "Ollama URL must be set. Provide RAGSTAR_OLLAMA_URL or set "
-            f"'ollama_url' in {_CONFIG_PATH}."
+            f"Required configuration '{key}' is not set. Provide {env_name} "
+            f"environment variable or set '{key}' in {_CONFIG_PATH}."
         )
     return value
 

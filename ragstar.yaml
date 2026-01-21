@@ -5,6 +5,10 @@ settings:
   embedding_local_only: false
   gitingest_max_file_size_mb: 3
   gitingest_include_patterns: ""
+  # Default Ollama endpoints use Docker service name "ollama".
+  # For local (non-Docker) Ollama, use for example:
+  #   ollama_url: http://localhost:11434/api/generate
+  #   ollama_pull_url: http://localhost:11434/api/pull
   ollama_url: http://ollama:11434/api/generate
   ollama_pull_url: http://ollama:11434/api/pull
   ollama_model_name: mistral

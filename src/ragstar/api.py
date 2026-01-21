@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from .config import settings, get_collection, clear_database
 from .index import build_index
@@ -27,7 +27,7 @@ class QueryResponse(BaseModel):
 
 class RepoItem(BaseModel):
     name: str = Field(..., min_length=1)
-    url: str = Field(..., min_length=1)
+    url: HttpUrl
 
 
 class BuildRequest(BaseModel):
@@ -35,7 +35,14 @@ class BuildRequest(BaseModel):
 
 
 class OllamaPullRequest(BaseModel):
-    model: str | None = Field(default=None, min_length=1)
+    model: str | None = Field(default=None)
+    
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, v: str | None) -> str | None:
+        if v is not None and len(v.strip()) == 0:
+            raise ValueError("model must be a non-empty string or None")
+        return v
 
 
 @app.get("/health")
@@ -47,12 +54,19 @@ def health() -> dict[str, str]:
 def get_config() -> dict[str, Any]:
     data = asdict(settings)
     data["chroma_db_path"] = str(settings.chroma_db_path)
+    # Remove sensitive fields before returning configuration
+    data.pop("github_token", None)
     return data
 
 
 @app.post("/build")
 def build(payload: BuildRequest) -> dict[str, Any]:
-    repos = [repo.model_dump() for repo in payload.repositories]
+    """Build the index for the provided repositories.
+    
+    NOTE: This endpoint may take significant time for large repositories or many
+    repositories, as it fetches content, generates LLM summaries, and stores results.
+    For production use, consider implementing this as a background task with status polling."""
+    repos = [{"name": repo.name, "url": str(repo.url)} for repo in payload.repositories]
     results = build_index(repos)
     stored = sum(1 for item in results if item.get("status") == "stored")
     skipped = sum(1 for item in results if item.get("status") == "skipped")
@@ -120,6 +134,9 @@ def get_summary(repo_name: str) -> dict[str, Any]:
 
 @app.post("/clear")
 def clear_db() -> dict[str, Any]:
+    """Clear the database. WARNING: This endpoint has no authentication and should
+    only be exposed in development environments. In production, consider removing
+    this endpoint or adding proper authentication."""
     clear_database()
     return {
         "status": "cleared",

@@ -40,7 +40,6 @@ docker-compose*.yml
 
 # Documentation
 *.md
-!README.md
 
 # Data and logs
 data/

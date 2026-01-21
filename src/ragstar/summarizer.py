@@ -142,7 +142,15 @@ def extract_readme(content: str) -> str:
 def extract_root_docs(
     content: str, max_files: int, max_chars: int
 ) -> list[tuple[str, str]]:
-    """Extract root-level .toml or .txt file sections with previews."""
+    """Extract root-level .toml or .txt file sections with previews.
+    
+    This function intentionally filters to only .toml and .txt files to focus
+    on configuration and documentation metadata. This is more restrictive than
+    previous implementations that included code files (.py, .js), but provides
+    focused context for LLM summarization.
+    
+    To capture additional file types, modify the wanted() function below.
+    """
     sections = _parse_file_sections(content)
 
     def is_root_file(name: str) -> bool:

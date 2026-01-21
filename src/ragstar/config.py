@@ -1,4 +1,11 @@
-"""Configuration for RAGstar."""
+"""Configuration for RAGstar.
+
+Note on import-time config loading:
+Configuration is loaded at module import time to fail fast if the config is
+invalid or missing. This ensures the application cannot start with invalid
+configuration. For applications requiring lazy config loading or better error
+handling at startup, consider moving config loading to a FastAPI lifespan event.
+"""
 
 from __future__ import annotations
 

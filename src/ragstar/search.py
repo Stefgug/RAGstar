@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from typing import Any
 
 from .config import get_collection
 
@@ -83,3 +84,54 @@ def search_repositories(
         result["summary"] = summary[:200] + "..." if len(summary) > 200 else summary
 
     return hybrid_results[:num_results]
+
+
+def get_summary_by_name(repo_name: str) -> dict[str, Any] | None:
+    """Get a single repository summary by name.
+    
+    Returns a dictionary with repo details and summary, or None if not found.
+    """
+    collection = get_collection()
+    result = collection.get(ids=[repo_name])
+    if not result.get("ids"):
+        return None
+
+    metadata = result["metadatas"][0]
+    document = result["documents"][0]
+
+    return {
+        "repo_id": result["ids"][0],
+        "repo_name": metadata.get("repo_name"),
+        "repo_url": metadata.get("repo_url"),
+        "summary_length": metadata.get("summary_length"),
+        "summary": document,
+    }
+
+
+def list_all_summaries() -> dict[str, Any]:
+    """List all stored repository summaries.
+    
+    Returns a dictionary with count and list of all summaries.
+    """
+    collection = get_collection()
+    all_items = collection.get()
+    if not all_items.get("ids"):
+        return {"count": 0, "items": []}
+
+    items = []
+    for repo_id, document, metadata in zip(
+        all_items["ids"],
+        all_items["documents"],
+        all_items["metadatas"],
+    ):
+        items.append(
+            {
+                "repo_id": repo_id,
+                "repo_name": metadata.get("repo_name"),
+                "repo_url": metadata.get("repo_url"),
+                "summary_length": metadata.get("summary_length"),
+                "summary": document,
+            }
+        )
+
+    return {"count": len(items), "items": items}

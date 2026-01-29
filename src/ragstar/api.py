@@ -19,7 +19,7 @@ from .config import (
 )
 from .index import build_index, iter_build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
-from .summarizer import pull_ollama_model
+from .summarizer import pull_ollama_model, call_ollama
 
 # Configure logging at application level
 log_level_str = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()
@@ -55,7 +55,7 @@ def _repo_name_from_url(repo_url: str) -> str:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "running"}
 
 
 @app.get("/config")
@@ -148,3 +148,30 @@ def pull_model(model: str | None = Body(default=None, embed=True)) -> dict[str, 
     if not ok:
         raise HTTPException(status_code=502, detail="Failed to pull Ollama model")
     return {"status": "pulled", "model": model_name}
+
+
+@app.post('/ask')
+def ask_question(
+    question: str = Body(..., embed=True),
+    num_results: int = Body(5, embed=True),
+) -> dict[str, Any]:
+    """Answer a question using the indexed repository summaries."""
+    results = search_repositories(question, num_results=num_results)
+    combined_context = "\n\n".join(item["summary"] for item in results)
+
+    prompt = (
+        f"You are an AI assistant that provides answers based on the following repository summaries:\n\n"
+        f"{combined_context}\n\n"
+        f"Question: {question}\n"
+        f"Answer:"
+    )
+
+    answer = call_ollama(prompt)
+    if answer is None:
+        raise HTTPException(status_code=502, detail="Failed to get answer from Ollama")
+
+    return {
+        "question": question,
+        "answer": answer,
+        "sources": results,
+    }

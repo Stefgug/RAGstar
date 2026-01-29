@@ -1,64 +1,60 @@
 """FastAPI service for RAGstar."""
 
-from __future__ import annotations
-
 import logging
 import os
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from fastapi import FastAPI, HTTPException, Header, Body
 
-from .config import settings, get_collection, clear_database
+from .config import (
+    settings,
+    clear_database,
+    CHROMA_DB_PATH,
+    CHROMA_COLLECTION_NAME,
+    EMBEDDING_MODEL,
+    EMBEDDING_LOCAL_ONLY,
+    GITINGEST_MAX_FILE_SIZE_MB,
+    GITINGEST_INCLUDE_PATTERNS,
+    OLLAMA_TIMEOUT,
+    MAX_PROMPT_CHARS,
+    MAX_FILES,
+    MAX_FILE_PREVIEW_CHARS,
+)
 from .index import build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
 from .summarizer import pull_ollama_model
 
 # Configure logging at application level
 log_level_str = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()
-# Validate log level and fallback to INFO if invalid
 valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 log_level = getattr(logging, log_level_str if log_level_str in valid_levels else "INFO")
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAGstar API", version="0.1.0")
 
 
-class QueryRequest(BaseModel):
-    query: str = Field(..., min_length=1)
-    num_results: int = Field(default=5, ge=1, le=50)
+def _require_admin_token(x_admin_token: str | None) -> None:
+    if not settings.admin_token:
+        raise HTTPException(status_code=403, detail="Admin token not configured")
+    if x_admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
-class QueryResponse(BaseModel):
-    results: list[dict[str, Any]]
-
-
-class RepoItem(BaseModel):
-    name: str = Field(..., min_length=1)
-    url: HttpUrl
-
-
-class BuildRequest(BaseModel):
-    repositories: list[RepoItem] = Field(..., min_length=1)
-
-
-class OllamaPullRequest(BaseModel):
-    model: str | None = Field(default=None)
-    
-    @field_validator("model")
-    @classmethod
-    def validate_model(cls, v: str | None) -> str | None:
-        if v is not None:
-            stripped = v.strip()
-            if len(stripped) == 0:
-                raise ValueError("model must be a non-empty string or None")
-            return stripped
-        return v
+def _repo_name_from_url(repo_url: str) -> str:
+    if "github.com" not in repo_url:
+        raise HTTPException(status_code=400, detail="Only GitHub URLs are supported")
+    path_part = repo_url.split("github.com", 1)[1].lstrip("/")
+    parts = [part for part in path_part.split("/") if part]
+    if len(parts) < 2:
+        raise HTTPException(status_code=400, detail="Invalid repository URL")
+    repo_name = parts[1]
+    if repo_name.endswith(".git"):
+        repo_name = repo_name[: -len(".git")]
+    if not repo_name:
+        raise HTTPException(status_code=400, detail="Invalid repository URL")
+    return repo_name
 
 
 @app.get("/health")
@@ -68,21 +64,22 @@ def health() -> dict[str, str]:
 
 @app.get("/config")
 def get_config() -> dict[str, Any]:
-    data = asdict(settings)
-    data["chroma_db_path"] = str(settings.chroma_db_path)
-    # Remove sensitive fields before returning configuration
-    data.pop("github_token", None)
-    return data
+    # Return only non-sensitive configuration details
+    return {
+        "embedding_model": EMBEDDING_MODEL,
+        "ollama_model_name": settings.ollama_model_name,
+        "max_prompt_chars": MAX_PROMPT_CHARS,
+        "max_files": MAX_FILES,
+    }
 
 
 @app.post("/build")
-def build(payload: BuildRequest) -> dict[str, Any]:
-    """Build the index for the provided repositories.
-    
-    NOTE: This endpoint may take significant time for large repositories or many
-    repositories, as it fetches content, generates LLM summaries, and stores results.
-    For production use, consider implementing this as a background task with status polling."""
-    repos = [{"name": repo.name, "url": str(repo.url)} for repo in payload.repositories]
+def build(repositories: list[str] = Body(..., embed=True)) -> dict[str, Any]:
+    """Build the index for the provided repositories."""
+    repos = [
+        {"name": _repo_name_from_url(str(repo_url)), "url": str(repo_url)}
+        for repo_url in repositories
+    ]
     results = build_index(repos)
     stored = sum(1 for item in results if item.get("status") == "stored")
     skipped = sum(1 for item in results if item.get("status") == "skipped")
@@ -97,10 +94,13 @@ def build(payload: BuildRequest) -> dict[str, Any]:
     }
 
 
-@app.post("/query", response_model=QueryResponse)
-def query_repositories(payload: QueryRequest) -> QueryResponse:
-    results = search_repositories(payload.query, num_results=payload.num_results)
-    return QueryResponse(results=results)
+@app.post("/query")
+def query_repositories(
+    query: str = Body(...),
+    num_results: int = Body(5),
+) -> dict[str, Any]:
+    results = search_repositories(query, num_results=num_results)
+    return {"results": results}
 
 
 @app.get("/summaries")
@@ -117,20 +117,21 @@ def get_summary(repo_name: str) -> dict[str, Any]:
 
 
 @app.post("/clear")
-def clear_db() -> dict[str, Any]:
-    """Clear the database. WARNING: This endpoint has no authentication and should
-    only be exposed in development environments. In production, consider removing
-    this endpoint or adding proper authentication."""
+def clear_db(x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+    """Clear the database (admin token required)."""
+    _require_admin_token(x_admin_token)
     clear_database()
     return {
         "status": "cleared",
-        "chroma_db_path": str(settings.chroma_db_path),
+        "chroma_db_path": str(CHROMA_DB_PATH),
     }
 
 
 @app.post("/ollama/pull")
-def pull_model(payload: OllamaPullRequest) -> dict[str, Any]:
-    model_name = payload.model or settings.ollama_model_name
+def pull_model(model: str | None = Body(default=None, embed=True)) -> dict[str, Any]:
+    model_name = model.strip() if model else settings.ollama_model_name
+    if not model_name:
+        raise HTTPException(status_code=400, detail="model must be a non-empty string")
     ok = pull_ollama_model(model_name)
     if not ok:
         raise HTTPException(status_code=502, detail="Failed to pull Ollama model")

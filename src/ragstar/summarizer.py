@@ -1,217 +1,102 @@
 """Repository summarization using local Ollama."""
 
-from __future__ import annotations
-
-import re
 import logging
-from typing import Iterable
 
 import requests
 import gitingest
 
-from .config import settings
+from .config import (
+    settings,
+    GITINGEST_MAX_FILE_SIZE_MB,
+    GITINGEST_INCLUDE_PATTERNS,
+    MAX_FILE_PREVIEW_CHARS,
+    MAX_FILES,
+    MAX_PROMPT_CHARS,
+    OLLAMA_TIMEOUT,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# -------- Ingest helpers -------- #
-
-
-def _iter_ingest_attempts() -> list[tuple[int, str | set[str] | None, str]]:
-    max_size_bytes = max(1, settings.gitingest_max_file_size_mb) * 1024 * 1024
-
-    attempts: list[tuple[int, str | set[str] | None, str]] = []
-    include_patterns = settings.gitingest_include_patterns.strip() or None
-    attempts.append((max_size_bytes, include_patterns, "primary"))
-
-    fallback_patterns: set[str] = {
-        "**/README*",
-        "**/*.md",
-        "**/*.rst",
-        "**/*.txt",
-    }
-    fallback_size = min(max_size_bytes, 1 * 1024 * 1024)
-    attempts.append((fallback_size, fallback_patterns, "fallback:docs-only"))
-
-    return attempts
-
-
 def get_repo_content(repo_url: str) -> tuple[str, str, str] | None:
     """Fetch repository content via gitingest with a fallback strategy."""
-    last_error: Exception | None = None
-    for max_file_size, include_patterns, label in _iter_ingest_attempts():
-        try:
-            summary, tree, content = gitingest.ingest(
-                repo_url,
-                max_file_size=max_file_size,
-                include_patterns=include_patterns,
-                token=settings.github_token,
-            )
-            return summary, tree, content
-        except Exception as exc:  # pragma: no cover - best-effort network
-            last_error = exc
-            logger.debug(
-                f"Failed to fetch {repo_url} ({label}, max_file_size={max_file_size}): {exc}"
-            )
+    max_size_bytes = max(1, GITINGEST_MAX_FILE_SIZE_MB) * 1024 * 1024
+    include_patterns = GITINGEST_INCLUDE_PATTERNS.strip() or None
 
-    logger.warning(f"Failed to fetch {repo_url} after all retries: {last_error}")
-    return None
+    try:
+        return gitingest.ingest(
+            repo_url,
+            max_file_size=max_size_bytes,
+            include_patterns=include_patterns,
+            token=settings.github_token,
+        )
+    except Exception as exc:  # pragma: no cover - best-effort network
+        logger.debug(f"Primary ingest failed for {repo_url}: {exc}")
 
-
-# -------- Extraction helpers -------- #
-
-
-def _clean_filename(name: str) -> str:
-    cleaned = name.strip().strip("`")
-    cleaned = re.sub(r"\s+\(.*\)$", "", cleaned)
-    cleaned = re.sub(r"^(file|path|filename)\s*:\s*", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"^[-=]+\s*", "", cleaned)
-    cleaned = re.sub(r"\s*[-=]+$", "", cleaned)
-    return cleaned
+    fallback_patterns = {"**/README*", "**/*.md", "**/*.rst", "**/*.txt"}
+    try:
+        return gitingest.ingest(
+            repo_url,
+            max_file_size=min(max_size_bytes, 1 * 1024 * 1024),
+            include_patterns=fallback_patterns,
+            token=settings.github_token,
+        )
+    except Exception as exc:  # pragma: no cover - best-effort network
+        logger.warning(f"Failed to fetch {repo_url}: {exc}")
+        return None
 
 
-def _parse_file_sections(content: str) -> list[tuple[str, str]]:
+def _split_by_file(content: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
+    current_name: str | None = None
+    current_lines: list[str] = []
 
-    header_pattern = re.compile(
-        r"(?:^|\n)(?:#{1,6}\s+|(?:file|path|filename)\s*:\s+)([^\n]+)\n",
-        re.IGNORECASE,
-    )
-    matches = list(header_pattern.finditer(content))
-    if matches:
-        for idx, match in enumerate(matches):
-            name = _clean_filename(match.group(1))
-            start = match.end()
-            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
-            body = content[start:end].strip("\n")
-            sections.append((name, body))
-        return sections
+    for line in content.splitlines():
+        if line.startswith("FILE:"):
+            if current_name is not None:
+                sections.append((current_name, "\n".join(current_lines).strip("\n")))
+            current_name = line[len("FILE:") :].strip()
+            current_lines = []
+            continue
+        if current_name is not None:
+            current_lines.append(line)
 
-    sep_pattern = re.compile(
-        r"(?:^|\n)(?:=+|-+)\n([^\n]+)\n(?:=+|-+)\n",
-        re.IGNORECASE,
-    )
-    matches = list(sep_pattern.finditer(content))
-    if matches:
-        for idx, match in enumerate(matches):
-            name = _clean_filename(match.group(1))
-            start = match.end()
-            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
-            body = content[start:end].strip("\n")
-            sections.append((name, body))
-
-    if sections:
-        return sections
-
-    single_line_sep = re.compile(
-        r"(?:^|\n)(?:=+|-+)\s*([^\n]+?)\s*(?:=+|-+)(?:\n|$)",
-        re.IGNORECASE,
-    )
-    matches = list(single_line_sep.finditer(content))
-    if matches:
-        for idx, match in enumerate(matches):
-            name = _clean_filename(match.group(1))
-            start = match.end()
-            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
-            body = content[start:end].strip("\n")
-            sections.append((name, body))
+    if current_name is not None:
+        sections.append((current_name, "\n".join(current_lines).strip("\n")))
 
     return sections
 
 
-def extract_readme(content: str) -> str:
-    """Return README text if present (up to 8000 chars)."""
-    sections = _parse_file_sections(content)
-    if sections:
-        for name, body in sections:
-            base = name.split("/")[-1].split("\\")[-1].lower()
-            if base.startswith("readme"):
-                return body.strip()[:8000]
-        for name, body in sections:
-            base = name.split("/")[-1].split("\\")[-1].lower()
-            if "readme" in base:
-                return body.strip()[:8000]
-
-    match = re.search(
-        r"(?:^|\n)(?:#{1,6}\s+|FILE:\s+)?(README(?:\.(?:md|rst|txt))?)\n(.*?)(?=\n(?:#{1,6}\s+|FILE:\s+)|\Z)",
-        content,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if not match:
-        return ""
-    return match.group(2).strip()[:8000]
+def _extract_readme(sections: list[tuple[str, str]]) -> str:
+    for name, body in sections:
+        base = name.split("/")[-1].split("\\")[-1].lower()
+        if "readme" in base:
+            return body.strip()[:8000]
+    return ""
 
 
-def extract_root_docs(
-    content: str, max_files: int, max_chars: int
-) -> list[tuple[str, str]]:
-    """Extract root-level .toml or .txt file sections with previews.
-    
-    This function intentionally filters to only .toml and .txt files to focus
-    on configuration and documentation metadata. This is more restrictive than
-    previous implementations that included code files (.py, .js), but provides
-    focused context for LLM summarization.
-    
-    To capture additional file types, modify the wanted() function below.
-    """
-    sections = _parse_file_sections(content)
-
-    def is_root_file(name: str) -> bool:
-        return "/" not in name and "\\" not in name
-
-    def wanted(name: str) -> bool:
+def _extract_root_docs(sections: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    docs: list[tuple[str, str]] = []
+    for name, body in sections:
+        if "/" in name or "\\" in name:
+            continue
         lower = name.lower()
-        return lower.endswith((".toml", ".txt"))
-
-    filtered: list[tuple[str, str]] = []
-    if sections:
-        for filename, body in sections:
-            name = _clean_filename(filename)
-            if not is_root_file(name):
-                continue
-            if not wanted(name):
-                continue
-            filtered.append((name, body))
-    else:
-        file_pattern = r"\n(?:#{1,6}\s+)([^\n]+)\n(.*?)(?=\n#{1,6}\s+|\Z)"
-        files = re.findall(file_pattern, content, re.DOTALL)
-        for filename, body in files:
-            name = _clean_filename(filename)
-            if not is_root_file(name):
-                continue
-            if not wanted(name):
-                continue
-            filtered.append((name, body))
-
-    filtered = filtered[:max_files]
-
-    previews = []
-    for name, body in filtered:
-        preview = body.strip()[:max_chars]
+        if not lower.endswith((".toml", ".txt")):
+            continue
+        preview = body.strip()[: MAX_FILE_PREVIEW_CHARS]
         if preview:
-            previews.append((name, preview))
-    return previews
+            docs.append((name, preview))
+    return docs[: MAX_FILES]
 
 
-def build_context_blocks(content: str) -> tuple[str, str]:
-    """Return (readme_block, root_docs_block) with clear labels."""
-    readme_text = extract_readme(content)
-    root_docs = extract_root_docs(
-        content,
-        max_files=settings.max_files,
-        max_chars=settings.max_file_preview_chars,
-    )
-
-    readme_block = readme_text if readme_text else "(README missing or empty)"
-
-    doc_chunks = [f"FILE: {name}\n{preview}" for name, preview in root_docs]
-    docs_block = (
-        "\n\n---\n\n".join(doc_chunks)
-        if doc_chunks
-        else "(No root .toml/.txt files captured)"
-    )
-
-    return readme_block, docs_block
+def _build_context(content: str) -> tuple[str, str]:
+    sections = _split_by_file(content)
+    readme = _extract_readme(sections) or "(README missing or empty)"
+    docs = _extract_root_docs(sections)
+    docs_block = "\n\n---\n\n".join([f"FILE: {name}\n{preview}" for name, preview in docs])
+    if not docs_block:
+        docs_block = "(No root .toml/.txt files captured)"
+    return readme, docs_block
 
 
 # -------- LLM call -------- #
@@ -224,7 +109,7 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
         resp = requests.post(
             settings.ollama_pull_url,
             json={"name": name, "stream": False},
-            timeout=settings.ollama_timeout,
+            timeout=OLLAMA_TIMEOUT,
         )
         if resp.status_code == 200:
             return True
@@ -236,45 +121,46 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
 
 def call_ollama(prompt: str) -> str | None:
     """Call local Ollama model. Returns text or None on failure."""
+    payload = {
+        "model": settings.ollama_model_name,
+        "prompt": prompt,
+        "stream": False,
+        "temperature": 0.4,
+    }
+    
     try:
         resp = requests.post(
             settings.ollama_url,
-            json={
-                "model": settings.ollama_model_name,
-                "prompt": prompt,
-                "stream": False,
-                "temperature": 0.4,
-            },
-            timeout=settings.ollama_timeout,
+            json=payload,
+            timeout=OLLAMA_TIMEOUT,
         )
         if resp.status_code == 200:
             return resp.json().get("response", "").strip()
+        
+        # If model not found, try to pull it once
         if resp.status_code == 404:
+            logger.info(f"Model {settings.ollama_model_name} not found, attempting to pull")
             if pull_ollama_model(settings.ollama_model_name):
-                retry = requests.post(
+                # Retry the request after successful pull
+                retry_resp = requests.post(
                     settings.ollama_url,
-                    json={
-                        "model": settings.ollama_model_name,
-                        "prompt": prompt,
-                        "stream": False,
-                        "temperature": 0.4,
-                    },
-                    timeout=settings.ollama_timeout,
+                    json=payload,
+                    timeout=OLLAMA_TIMEOUT,
                 )
-                if retry.status_code == 200:
-                    return retry.json().get("response", "").strip()
-                logger.error(
-                    f"Ollama retry failed after pull ({retry.status_code}): {retry.text}"
-                )
+                if retry_resp.status_code == 200:
+                    return retry_resp.json().get("response", "").strip()
+                logger.error(f"Ollama retry failed ({retry_resp.status_code})")
             else:
-                logger.error(
-                    f"Ollama model pull failed; cannot retry request for model "
-                    f"{settings.ollama_model_name!r}"
-                )
+                logger.error(f"Failed to pull model {settings.ollama_model_name}")
+        else:
+            logger.error(f"Ollama request failed ({resp.status_code})")
+            
     except requests.exceptions.ConnectionError:
+        logger.warning("Cannot connect to Ollama service")
         return None
     except Exception as exc:  # pragma: no cover - best-effort network
         logger.error(f"Ollama error: {exc}")
+    
     return None
 
 
@@ -293,7 +179,7 @@ def generate_summary(repo_url: str, repo_name: str) -> str:
         return ""
 
     logger.debug(f"Building context blocks for {repo_name}")
-    readme_block, docs_block = build_context_blocks(content)
+    readme_block, docs_block = _build_context(content)
 
     prompt_blocks = f"""
 Repository: {repo_name}
@@ -305,10 +191,10 @@ Repository: {repo_name}
 {docs_block}
 """
 
-    if len(prompt_blocks) > settings.max_prompt_chars:
+    if len(prompt_blocks) > MAX_PROMPT_CHARS:
         logger.debug(f"Context for {repo_name} is {len(prompt_blocks)} chars, truncating")
         prompt_blocks = (
-            prompt_blocks[: settings.max_prompt_chars]
+            prompt_blocks[: MAX_PROMPT_CHARS]
             + "\n[... truncated ...]"
         )
 

@@ -1,8 +1,6 @@
 """Query interface - hybrid retrieval (BM25 + dense embeddings)."""
 
-from __future__ import annotations
-
-import re
+import string
 from collections import Counter
 from typing import Any
 
@@ -10,7 +8,12 @@ from .config import get_collection
 
 
 def tokenize(text: str) -> list[str]:
-    return re.findall(r"\b\w+\b", text.lower())
+    tokens: list[str] = []
+    for raw in text.lower().split():
+        token = raw.strip(string.punctuation)
+        if token:
+            tokens.append(token)
+    return tokens
 
 
 def compute_bm25_score(

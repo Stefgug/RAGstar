@@ -1,21 +1,23 @@
 """FastAPI service for RAGstar."""
 
+from __future__ import annotations
+
+import json
 import logging
 import os
-from dataclasses import asdict
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Header, Body
+from fastapi.responses import StreamingResponse
 
 from .config import (
     settings,
     clear_database,
     CHROMA_DB_PATH,
-    CHROMA_COLLECTION_NAME,
     EMBEDDING_MODEL,
     GITINGEST_MAX_FILE_SIZE_MB,
 )
-from .index import build_index
+from .index import build_index, iter_build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
 from .summarizer import pull_ollama_model
 
@@ -85,6 +87,21 @@ def build(repositories: list[str] = Body(..., embed=True)) -> dict[str, Any]:
         "errored": errored,
         "results": results,
     }
+
+
+@app.post("/build/stream")
+def build_stream(repositories: list[str] = Body(..., embed=True)) -> StreamingResponse:
+    """Build the index and stream progress updates via SSE."""
+    repos = [
+        {"name": _repo_name_from_url(str(repo_url)), "url": str(repo_url)}
+        for repo_url in repositories
+    ]
+
+    def event_stream():
+        for event in iter_build_index(repos):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/query")

@@ -69,3 +69,95 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
 
     logger.info(f"Index building complete! Stored in {CHROMA_DB_PATH}")
     return results
+
+
+def iter_build_index(repositories: list[dict[str, str]]):
+    logger.info(f"Initializing ChromaDB at {CHROMA_DB_PATH}")
+    collection = get_collection()
+
+    total = len(repositories)
+    logger.info(f"Building index for {total} repositories")
+
+    results: list[dict[str, object]] = []
+    stored = skipped = errored = 0
+
+    yield {"event": "start", "total": total}
+
+    for idx, repo in enumerate(repositories, 1):
+        repo_name = repo["name"]
+        repo_url = repo["url"]
+
+        logger.info(f"[{idx}/{total}] Processing: {repo_name}")
+
+        summary = generate_summary(repo_url, repo_name)
+        if not summary:
+            logger.warning(f"Summary skipped for {repo_name} (fetch failed)")
+            skipped += 1
+            result = {
+                "repo_name": repo_name,
+                "repo_url": repo_url,
+                "status": "skipped",
+                "reason": "fetch_failed_or_empty",
+            }
+            results.append(result)
+            yield {
+                "event": "progress",
+                "index": idx,
+                "total": total,
+                "result": result,
+                "stored": stored,
+                "skipped": skipped,
+                "errored": errored,
+            }
+            continue
+
+        logger.info(f"Summary generated for {repo_name} ({len(summary)} chars)")
+
+        try:
+            collection.upsert(
+                ids=[repo_name],
+                documents=[summary],
+                metadatas=[{
+                    "repo_name": repo_name,
+                    "repo_url": repo_url,
+                    "summary_length": len(summary),
+                }],
+            )
+            logger.info(f"Added/updated {repo_name} in database")
+            stored += 1
+            result = {
+                "repo_name": repo_name,
+                "repo_url": repo_url,
+                "status": "stored",
+                "summary_length": len(summary),
+            }
+        except Exception as exc:
+            logger.error(f"Error storing {repo_name} in database: {exc}")
+            errored += 1
+            result = {
+                "repo_name": repo_name,
+                "repo_url": repo_url,
+                "status": "error",
+                "reason": str(exc),
+            }
+
+        results.append(result)
+        yield {
+            "event": "progress",
+            "index": idx,
+            "total": total,
+            "result": result,
+            "stored": stored,
+            "skipped": skipped,
+            "errored": errored,
+        }
+
+    logger.info(f"Index building complete! Stored in {CHROMA_DB_PATH}")
+    yield {
+        "event": "complete",
+        "total": total,
+        "stored": stored,
+        "skipped": skipped,
+        "errored": errored,
+        "results": results,
+    }

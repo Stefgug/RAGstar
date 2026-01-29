@@ -1,52 +1,26 @@
-# Copilot Instructions for RAGstar
+## RAGstar AI coding notes
 
-## Project Overview
-RAGstar is a repository discovery system using hybrid search (BM25 + dense embeddings). It summarizes GitHub repositories via Ollama and enables natural language queries through a REST API.
+### Big picture
+- FastAPI service in [src/ragstar/api.py](src/ragstar/api.py) exposing build/search/summary endpoints.
+- Index pipeline: `/build` or `/build/stream` → `build_index()`/`iter_build_index()` in [src/ragstar/index.py](src/ragstar/index.py) → `generate_summary()` in [src/ragstar/summarizer.py](src/ragstar/summarizer.py) → ChromaDB via `get_collection()` in [src/ragstar/config.py](src/ragstar/config.py).
+- Summaries are README-only via gitingest; embeddings stored in ChromaDB (persistent at ./ragstar_db).
 
-## Essential Guidelines
-
-### Language & Style
-- Python 3.12 (pinned for CUDA compatibility)
-- Use `from __future__ import annotations` for forward references
-- Prefer dataclasses for configuration
-- Keep functions simple and focused
-
-### Dependencies
-- Use `uv` for package management (`uv sync`)
-- Core stack: FastAPI, ChromaDB, sentence-transformers, Ollama (via requests), gitingest
-- Docker for deployment (Dockerfile + docker-compose)
-- Avoid adding new dependencies unless essential
-
-### Project Structure
-- `src/ragstar/api.py` - FastAPI REST endpoints
-- `src/ragstar/config.py` - YAML-based settings, ChromaDB helpers
-- `src/ragstar/index.py` - Build vector index from repo summaries
-- `src/ragstar/search.py` - Hybrid search (BM25 + dense embeddings)
-- `src/ragstar/summarizer.py` - Generate summaries via Ollama, fetch content via gitingest
-- `src/ragstar/viewer.py` - View stored summaries
+### API patterns
+- Repo name is derived from GitHub URL (second path segment) in `_repo_name_from_url()`; keep this behavior consistent.
+- Streaming progress uses SSE: `/build/stream` yields events with `start`, `progress`, `complete` and totals (see [src/ragstar/index.py](src/ragstar/index.py)).
+- `/clear` is admin-protected; requires `admin_token` (see [src/ragstar/api.py](src/ragstar/api.py)).
 
 ### Configuration
-- YAML config file (default: `./ragstar.yaml`)
-- Environment variables for overrides (see README)
-- Ollama URL required (Docker: `http://ollama:11434/api/generate`)
-- Supports offline mode for embedding models
+- YAML config at ./ragstar.yaml (override with `RAGSTAR_CONFIG_PATH`); required `ollama_url` (see [src/ragstar/config.py](src/ragstar/config.py)).
+- Embedding model is `sentence-transformers/all-MiniLM-L6-v2` and is cached locally if present; otherwise downloaded via `snapshot_download()`.
+- Environment overrides: `RAGSTAR_OLLAMA_URL`, `RAGSTAR_OLLAMA_PULL_URL`, `RAGSTAR_OLLAMA_MODEL`, `RAGSTAR_GITHUB_TOKEN`, `RAGSTAR_ADMIN_TOKEN`, `RAGSTAR_LOG_LEVEL`.
 
-### Code Patterns
-- Use `Settings` dataclass (frozen=True) for all config
-- ChromaDB operations via `get_collection()` helper in `config.py`
-- FastAPI endpoints with Pydantic models for validation
-- Keep main logic in library code, not in API layer
-- Implement fallback strategies for network operations (see summarizer)
-- Return proper HTTP responses with error details
+### Workflows
+- Install deps: `uv sync` (Python 3.12).
+- Run services: `docker-compose up -d`.
+- Health check: `GET /health`.
 
-### Search & Summarization
-- Hybrid search combines BM25 (lexical) and dense embeddings (semantic)
-- Default weights: 60% BM25, 40% dense (configurable)
-- Summaries generated via Ollama API (requests library)
-- Repo content fetched via gitingest with fallback to docs-only
-
-### Deployment
-- Designed for cloud deployment via Docker
-- Docker Compose orchestrates RAGstar + Ollama services
-- FastAPI runs via uvicorn
-- Prefer container-ready patterns
+### Code conventions
+- Keep response payloads plain dicts; errors use `HTTPException`.
+- Logging configured at app startup; modules use `logging.getLogger(__name__)`.
+- Avoid changing public endpoint shapes without updating README examples.

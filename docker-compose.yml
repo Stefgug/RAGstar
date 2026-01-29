@@ -23,11 +23,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
       RAGSTAR_OLLAMA_URL: http://ollama:11434/api/generate
-      UV_CACHE_DIR: /app/.cache/uv
-      XDG_CACHE_HOME: /app/.cache
-      HOME: /app
     volumes:
       - ./ragstar.yaml:/app/ragstar.yaml:ro
       - ragstar-db:/app/ragstar_db
@@ -43,11 +39,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
       RAGSTAR_OLLAMA_URL: http://ollama:11434/api/generate
-      HOME: /app
-      UV_CACHE_DIR: /app/.cache/uv
-      XDG_CACHE_HOME: /app/.cache
     volumes:
       - ./src:/app/src
       - dev-venv:/app/.venv

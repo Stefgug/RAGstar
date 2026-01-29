@@ -1,3 +1,5 @@
+# Security: Store tokens in environment variables (RAGSTAR_GITHUB_TOKEN, RAGSTAR_ADMIN_TOKEN)
+# rather than in this file to avoid committing secrets to version control.
 ollama_url: http://ollama:11434/api/generate
 ollama_model_name: mistral
 github_token: ""

@@ -24,14 +24,14 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml README.md /app/
 
-RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+RUN --mount=type=cache,target=/app/.cache/uv,sharing=locked \
     uv sync --no-dev --no-install-project
 
 COPY src /app/src
 RUN rm -rf /app/src/*.egg-info
 COPY ragstar.yaml /app/
 
-RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+RUN --mount=type=cache,target=/app/.cache/uv,sharing=locked \
     uv sync --no-dev
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

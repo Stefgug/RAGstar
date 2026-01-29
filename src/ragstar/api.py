@@ -48,12 +48,12 @@ def _repo_name_from_url(repo_url: str) -> str:
     path_part = repo_url.split("github.com", 1)[1].lstrip("/")
     parts = [part for part in path_part.split("/") if part]
     if len(parts) < 2:
-        raise HTTPException(status_code=400, detail="Invalid GitHub repo URL")
+        raise HTTPException(status_code=400, detail="Invalid repository URL")
     repo_name = parts[1]
     if repo_name.endswith(".git"):
         repo_name = repo_name[: -len(".git")]
     if not repo_name:
-        raise HTTPException(status_code=400, detail="Invalid GitHub repo URL")
+        raise HTTPException(status_code=400, detail="Invalid repository URL")
     return repo_name
 
 
@@ -64,25 +64,13 @@ def health() -> dict[str, str]:
 
 @app.get("/config")
 def get_config() -> dict[str, Any]:
-    data = asdict(settings)
-    data.update(
-        {
-            "chroma_db_path": str(CHROMA_DB_PATH),
-            "chroma_collection_name": CHROMA_COLLECTION_NAME,
-            "embedding_model": EMBEDDING_MODEL,
-            "embedding_local_only": EMBEDDING_LOCAL_ONLY,
-            "gitingest_max_file_size_mb": GITINGEST_MAX_FILE_SIZE_MB,
-            "gitingest_include_patterns": GITINGEST_INCLUDE_PATTERNS,
-            "ollama_timeout": OLLAMA_TIMEOUT,
-            "max_prompt_chars": MAX_PROMPT_CHARS,
-            "max_files": MAX_FILES,
-            "max_file_preview_chars": MAX_FILE_PREVIEW_CHARS,
-        }
-    )
-    # Remove sensitive fields before returning configuration
-    data.pop("github_token", None)
-    data.pop("admin_token", None)
-    return data
+    # Return only non-sensitive configuration details
+    return {
+        "embedding_model": EMBEDDING_MODEL,
+        "ollama_model_name": settings.ollama_model_name,
+        "max_prompt_chars": MAX_PROMPT_CHARS,
+        "max_files": MAX_FILES,
+    }
 
 
 @app.post("/build")

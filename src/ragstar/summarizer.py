@@ -121,45 +121,46 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
 
 def call_ollama(prompt: str) -> str | None:
     """Call local Ollama model. Returns text or None on failure."""
+    payload = {
+        "model": settings.ollama_model_name,
+        "prompt": prompt,
+        "stream": False,
+        "temperature": 0.4,
+    }
+    
     try:
         resp = requests.post(
             settings.ollama_url,
-            json={
-                "model": settings.ollama_model_name,
-                "prompt": prompt,
-                "stream": False,
-                "temperature": 0.4,
-            },
+            json=payload,
             timeout=OLLAMA_TIMEOUT,
         )
         if resp.status_code == 200:
             return resp.json().get("response", "").strip()
+        
+        # If model not found, try to pull it once
         if resp.status_code == 404:
+            logger.info(f"Model {settings.ollama_model_name} not found, attempting to pull")
             if pull_ollama_model(settings.ollama_model_name):
-                retry = requests.post(
+                # Retry the request after successful pull
+                retry_resp = requests.post(
                     settings.ollama_url,
-                    json={
-                        "model": settings.ollama_model_name,
-                        "prompt": prompt,
-                        "stream": False,
-                        "temperature": 0.4,
-                    },
+                    json=payload,
                     timeout=OLLAMA_TIMEOUT,
                 )
-                if retry.status_code == 200:
-                    return retry.json().get("response", "").strip()
-                logger.error(
-                    f"Ollama retry failed after pull ({retry.status_code}): {retry.text}"
-                )
+                if retry_resp.status_code == 200:
+                    return retry_resp.json().get("response", "").strip()
+                logger.error(f"Ollama retry failed ({retry_resp.status_code})")
             else:
-                logger.error(
-                    f"Ollama model pull failed; cannot retry request for model "
-                    f"{settings.ollama_model_name!r}"
-                )
+                logger.error(f"Failed to pull model {settings.ollama_model_name}")
+        else:
+            logger.error(f"Ollama request failed ({resp.status_code})")
+            
     except requests.exceptions.ConnectionError:
+        logger.warning("Cannot connect to Ollama service")
         return None
     except Exception as exc:  # pragma: no cover - best-effort network
         logger.error(f"Ollama error: {exc}")
+    
     return None
 
 

@@ -27,15 +27,10 @@ class Settings:
 
 # Hardcoded defaults (simple app, rarely changed)
 CHROMA_DB_PATH = Path("./ragstar_db")
-CHROMA_COLLECTION_NAME = "repositories"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-EMBEDDING_LOCAL_ONLY = False
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 GITINGEST_MAX_FILE_SIZE_MB = 3
-GITINGEST_INCLUDE_PATTERNS = ""
 OLLAMA_TIMEOUT = 180
-MAX_PROMPT_CHARS = 120000
-MAX_FILES = 30
-MAX_FILE_PREVIEW_CHARS = 2000
+CHROMA_COLLECTION_NAME = "repositories"
 
 
 
@@ -95,45 +90,37 @@ settings = Settings(
 )
 
 
+def _resolve_embedding_model_source() -> str:
+    model_path = Path(EMBEDDING_MODEL)
+    if model_path.exists():
+        logger.info(f"Using local embedding model path: {model_path}")
+        return str(model_path)
+
+    try:
+        local_path = snapshot_download(
+            repo_id=EMBEDDING_MODEL,
+            local_files_only=True,
+        )
+        logger.info(f"Using locally cached embedding model at {local_path}")
+        return local_path
+    except Exception:
+        logger.info(
+            f"Embedding model '{EMBEDDING_MODEL}' not found in local cache; "
+            "downloading from Hugging Face."
+        )
+
+    return snapshot_download(
+        repo_id=EMBEDDING_MODEL,
+        local_files_only=False,
+    )
+
+
 def get_collection():
     client = PersistentClient(path=str(CHROMA_DB_PATH))
 
-    if EMBEDDING_LOCAL_ONLY:
-        os.environ.setdefault("HF_HUB_OFFLINE", "1")
-        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    model_source = _resolve_embedding_model_source()
 
-    # Prefer a local cached copy of the HF model when available to avoid
-    # repeated HEAD requests to the Hugging Face hub. If a local snapshot
-    # exists, use its filesystem path; otherwise fall back to the model id
-    # which triggers a download if necessary.
-    model_source = EMBEDDING_MODEL
-    model_path = Path(model_source)
-    if model_path.exists():
-        model_source = str(model_path)
-        logger.info(f"Using local embedding model path: {model_source}")
-    else:
-        try:
-            local_path = snapshot_download(
-                repo_id=EMBEDDING_MODEL,
-                local_files_only=True,
-            )
-            model_source = local_path
-            logger.info(f"Using locally cached embedding model at {local_path}")
-        except Exception:
-            if EMBEDDING_LOCAL_ONLY:
-                raise RuntimeError(
-                    "Embedding model not found in local cache. "
-                    "Prefetch it with snapshot_download(...) or set "
-                    "EMBEDDING_MODEL to a local path."
-                )
-            logger.info(
-                f"Embedding model '{EMBEDDING_MODEL}' not found in local cache; "
-                "will download from Hugging Face if required."
-            )
-
-    embedding_fn = SentenceTransformerEmbeddingFunction(
-        model_name=model_source
-    )
+    embedding_fn = SentenceTransformerEmbeddingFunction(model_name=model_source)
 
     return client.get_or_create_collection(
         name=CHROMA_COLLECTION_NAME,
@@ -142,15 +129,32 @@ def get_collection():
     )
 
 
-def clear_database() -> None:
+def clear_database() -> bool:
     db_path = Path(CHROMA_DB_PATH)
+
+    try:
+        client = PersistentClient(path=str(db_path))
+        try:
+            client.delete_collection(name=CHROMA_COLLECTION_NAME)
+            logger.info(f"Deleted collection '{CHROMA_COLLECTION_NAME}'")
+            return True
+        except Exception as exc:
+            logger.warning(f"Failed to delete collection '{CHROMA_COLLECTION_NAME}': {exc}")
+    except Exception as exc:
+        logger.warning(f"Failed to create Chroma client for reset: {exc}")
 
     if not db_path.exists():
         logger.info(f"Database at {db_path} doesn't exist yet.")
-        return
+        return True
 
     try:
-        shutil.rmtree(db_path)
-        logger.info(f"Cleared database at {db_path}")
+        for child in db_path.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        logger.info(f"Cleared database contents at {db_path}")
+        return True
     except Exception as exc:
-        logger.error(f"Error clearing database: {exc}")
+        logger.error(f"Error clearing database contents: {exc}")
+        return False

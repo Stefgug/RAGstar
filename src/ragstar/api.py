@@ -13,13 +13,7 @@ from .config import (
     CHROMA_DB_PATH,
     CHROMA_COLLECTION_NAME,
     EMBEDDING_MODEL,
-    EMBEDDING_LOCAL_ONLY,
     GITINGEST_MAX_FILE_SIZE_MB,
-    GITINGEST_INCLUDE_PATTERNS,
-    OLLAMA_TIMEOUT,
-    MAX_PROMPT_CHARS,
-    MAX_FILES,
-    MAX_FILE_PREVIEW_CHARS,
 )
 from .index import build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
@@ -68,8 +62,7 @@ def get_config() -> dict[str, Any]:
     return {
         "embedding_model": EMBEDDING_MODEL,
         "ollama_model_name": settings.ollama_model_name,
-        "max_prompt_chars": MAX_PROMPT_CHARS,
-        "max_files": MAX_FILES,
+        "gitingest_max_file_size_mb": GITINGEST_MAX_FILE_SIZE_MB,
     }
 
 
@@ -120,7 +113,9 @@ def get_summary(repo_name: str) -> dict[str, Any]:
 def clear_db(x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
     """Clear the database (admin token required)."""
     _require_admin_token(x_admin_token)
-    clear_database()
+    cleared = clear_database()
+    if not cleared:
+        raise HTTPException(status_code=500, detail="Failed to clear database")
     return {
         "status": "cleared",
         "chroma_db_path": str(CHROMA_DB_PATH),

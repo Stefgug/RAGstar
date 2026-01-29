@@ -127,7 +127,7 @@ def call_ollama(prompt: str) -> str | None:
         "stream": False,
         "temperature": 0.4,
     }
-    
+
     try:
         resp = requests.post(
             settings.ollama_url,
@@ -136,7 +136,7 @@ def call_ollama(prompt: str) -> str | None:
         )
         if resp.status_code == 200:
             return resp.json().get("response", "").strip()
-        
+
         # If model not found, try to pull it once
         if resp.status_code == 404:
             logger.info(f"Model {settings.ollama_model_name} not found, attempting to pull")
@@ -154,13 +154,13 @@ def call_ollama(prompt: str) -> str | None:
                 logger.error(f"Failed to pull model {settings.ollama_model_name}")
         else:
             logger.error(f"Ollama request failed ({resp.status_code})")
-            
+
     except requests.exceptions.ConnectionError:
         logger.warning("Cannot connect to Ollama service")
         return None
     except Exception as exc:  # pragma: no cover - best-effort network
         logger.error(f"Ollama error: {exc}")
-    
+
     return None
 
 
@@ -218,7 +218,7 @@ Structure your response in clear sections:
 
 Specificity over vagueness. Instead of "data tool" say "processes 1M+ events/sec" or "manages time-series with 99.9% uptime".
 Only use information from the README and root-level .toml/.txt files shown below.
-DO NOT mention installation steps or configuration details.
+DO NOT mention installation steps, command line or configuration details.
 DO NOT INCLUDE ANY MARKDOWN FORMATTING, URLS, OR HTML TAGS IN YOUR RESPONSE. ONLY HUMAN READABLE TEXT.
 DO NOT add artificial padding. Use all 3-10 sentences to be informative.
 Do not mention if no root .toml/.txt files were found.

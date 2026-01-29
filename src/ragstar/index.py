@@ -1,17 +1,15 @@
 """Vector index builder."""
 
-from __future__ import annotations
-
 import logging
 
-from .config import settings, get_collection
+from .config import CHROMA_DB_PATH, get_collection
 from .summarizer import generate_summary
 
 logger = logging.getLogger(__name__)
 
 
 def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
-    logger.info(f"Initializing ChromaDB at {settings.chroma_db_path}")
+    logger.info(f"Initializing ChromaDB at {CHROMA_DB_PATH}")
     collection = get_collection()
 
     logger.info(f"Building index for {len(repositories)} repositories")
@@ -69,5 +67,5 @@ def build_index(repositories: list[dict[str, str]]) -> list[dict[str, object]]:
                 }
             )
 
-    logger.info(f"Index building complete! Stored in {settings.chroma_db_path}")
+    logger.info(f"Index building complete! Stored in {CHROMA_DB_PATH}")
     return results

@@ -25,13 +25,15 @@ services:
     environment:
       RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
       RAGSTAR_OLLAMA_URL: http://ollama:11434/api/generate
+      UV_CACHE_DIR: /app/.cache/uv
+      XDG_CACHE_HOME: /app/.cache
+      HOME: /app
     volumes:
       - ./ragstar.yaml:/app/ragstar.yaml:ro
       - ragstar-db:/app/ragstar_db
 
   ragstar-dev:
-    build:
-      context: .
+    image: python:3.12.8-slim
     container_name: ragstar-dev
     depends_on:
       - ollama
@@ -43,18 +45,24 @@ services:
     environment:
       RAGSTAR_CONFIG_PATH: /app/ragstar.yaml
       RAGSTAR_OLLAMA_URL: http://ollama:11434/api/generate
+      HOME: /app
+      UV_CACHE_DIR: /app/.cache/uv
+      XDG_CACHE_HOME: /app/.cache
     volumes:
       - ./src:/app/src
+      - dev-venv:/app/.venv
+      - dev-cache:/app/.cache
       - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./README.md:/app/README.md:ro
+      - ./uv.lock:/app/uv.lock:ro
       - ./ragstar.yaml:/app/ragstar.yaml:ro
       - ragstar-db:/app/ragstar_db
     working_dir: /app
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        cd /app && uv sync && uvicorn ragstar.api:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
+    command: >
+      sh -c "pip install uv && uv sync --frozen && uv run uvicorn ragstar.api:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src"
 
 volumes:
   ragstar-db:
   ollama-data:
+  dev-venv:
+  dev-cache:

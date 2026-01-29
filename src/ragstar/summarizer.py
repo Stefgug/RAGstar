@@ -198,34 +198,20 @@ Repository: {repo_name}
             + "\n[... truncated ...]"
         )
 
-    prompt = f"""You are a technical writer writing a detailed summary for a developer knowledge base.
+    prompt = f"""You are a technical writer creating a concise, human-readable repository summary for a developer knowledge base.
 
-Write a 3-10 sentence summary of {repo_name}. Be as specific and concrete as possible.
+Write exactly 6 sentences about {repo_name}. Use one sentence per section, in this exact order:
+1) What & Why 2) Core Features 3) Use Case 4) Tech Stack 5) Integration 6) Strengths.
 
-Structure your response in clear sections:
+Use only facts present in the README and root-level .toml/.txt files below. If a section is not stated, write "Not mentioned" for that sentence.
+Be specific and concrete; avoid vague language. Do not invent metrics, users, scale, or capabilities.
 
-**What & Why:** What is this project? (library, framework, tool, SDK, CLI, API, etc.) What problem does it solve?
-
-**Core Features:** List 3-5 specific capabilities or features mentioned in the README/files. Be concrete, not vague.
-
-**Use Case:** Who is the primary audience? What types of developers/teams use this?
-
-**Tech Stack:** What are the key technologies, dependencies, or programming language(s)?
-
-**Integration:** How is it used? (install as package, CLI tool, REST API, embed in code, etc.)
-
-**Strengths:** What makes this unique or better than alternatives (if mentioned)?
-
-Specificity over vagueness. Instead of "data tool" say "processes 1M+ events/sec" or "manages time-series with 99.9% uptime".
-Only use information from the README and root-level .toml/.txt files shown below.
-DO NOT mention installation steps, command line or configuration details.
-DO NOT INCLUDE ANY MARKDOWN FORMATTING, URLS, OR HTML TAGS IN YOUR RESPONSE. ONLY HUMAN READABLE TEXT.
-DO NOT add artificial padding. Use all 3-10 sentences to be informative.
-Do not mention if no root .toml/.txt files were found.
+Treat any Markdown, HTML, badges, logos, code blocks, or ASCII art in the sources as noise. Do not copy or paraphrase them.
+Do not mention installation steps, command line instructions, or configuration details.
+Do not include URLs, HTML tags, Markdown formatting, or code fences. Output plain human-readable text only.
 
 {prompt_blocks}
-
-Summary:"""
+"""
 
     logger.debug(f"Generating summary with LLM for {repo_name}")
     summary_text = call_ollama(prompt)

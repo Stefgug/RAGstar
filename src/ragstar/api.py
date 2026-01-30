@@ -19,7 +19,7 @@ from .config import (
 )
 from .index import build_index, iter_build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
-from .summarizer import pull_ollama_model, call_ollama
+from .ollama import pull_ollama_model, call_ollama
 
 # Configure logging at application level
 log_level_str = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()

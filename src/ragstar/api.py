@@ -14,7 +14,6 @@ from .config import (
     settings,
     clear_database,
     CHROMA_DB_PATH,
-    EMBEDDING_MODEL,
     GITINGEST_MAX_FILE_SIZE_MB,
 )
 from .index import build_index, iter_build_index
@@ -29,6 +28,16 @@ logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(mes
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAGstar API", version="0.1.0")
+
+
+@app.on_event("startup")
+def _pull_ollama_models_on_startup() -> None:
+    models = [settings.ollama_model_name, settings.ollama_embedding_model_name]
+    unique_models = [name for idx, name in enumerate(models) if name and name not in models[:idx]]
+    for model_name in unique_models:
+        logger.info(f"Ensuring Ollama model is available: {model_name}")
+        if not pull_ollama_model(model_name):
+            logger.warning(f"Ollama model pull failed or unavailable: {model_name}")
 
 
 def _require_admin_token(x_admin_token: str | None) -> None:
@@ -62,7 +71,7 @@ def health() -> dict[str, str]:
 def get_config() -> dict[str, Any]:
     # Return only non-sensitive configuration details
     return {
-        "embedding_model": EMBEDDING_MODEL,
+        "embedding_model": settings.ollama_embedding_model_name,
         "ollama_model_name": settings.ollama_model_name,
         "gitingest_max_file_size_mb": GITINGEST_MAX_FILE_SIZE_MB,
     }

@@ -2,5 +2,6 @@
 # rather than in this file to avoid committing secrets to version control.
 ollama_url: http://ollama:11434/api/generate
 ollama_model_name: mistral
+ollama_embedding_model_name: nomic-embed-text
 github_token: ""
 admin_token: ""

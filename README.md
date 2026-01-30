@@ -16,7 +16,7 @@ Install dependencies:
 uv sync
 ```
 
-Python support: CPython >=3.12,<3.13. The Docker image pins Python 3.12.8 for CUDA compatibility with the torch wheel.
+Python support: CPython >=3.12,<3.13. The Docker image pins Python 3.12.8.
 
 ## Configuration (YAML)
 
@@ -26,6 +26,7 @@ Minimal example:
 ```yaml
 ollama_url: http://ollama:11434/api/generate
 ollama_model_name: mistral
+ollama_embedding_model_name: nomic-embed-text
 github_token: ""
 admin_token: ""
 ```
@@ -41,6 +42,7 @@ You can override a small set of settings using environment variables:
 - RAGSTAR_OLLAMA_URL
 - RAGSTAR_OLLAMA_PULL_URL
 - RAGSTAR_OLLAMA_MODEL
+- RAGSTAR_OLLAMA_EMBED_MODEL
 - RAGSTAR_GITHUB_TOKEN
 - RAGSTAR_ADMIN_TOKEN
 

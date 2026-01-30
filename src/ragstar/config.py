@@ -27,7 +27,6 @@ class Settings:
 
 
 # Hardcoded defaults (simple app, rarely changed)
-CHROMA_DB_PATH = Path("./ragstar_db")
 OLLAMA_EMBEDDING_MODEL_DEFAULT = "nomic-embed-text"
 GITINGEST_MAX_FILE_SIZE_MB = 3
 OLLAMA_TIMEOUT = 180
@@ -88,6 +87,14 @@ def _read_required_str(env_name: str, key: str) -> str:
             f"environment variable or set '{key}' in {_CONFIG_PATH}."
         )
     return str(value).strip()
+
+
+def _read_db_path() -> Path:
+    value = _read_value("RAGSTAR_DB_PATH", "chroma_db_path", "./ragstar_db")
+    return Path(str(value)).expanduser()
+
+
+CHROMA_DB_PATH = _read_db_path()
 
 
 def _derive_ollama_pull_url(generate_url: str) -> str:

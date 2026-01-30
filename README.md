@@ -27,6 +27,7 @@ Minimal example:
 ollama_url: http://ollama:11434/api/generate
 ollama_model_name: mistral
 ollama_embedding_model_name: nomic-embed-text
+chroma_db_path: ./ragstar_db
 github_token: ""
 admin_token: ""
 ```
@@ -43,6 +44,7 @@ You can override a small set of settings using environment variables:
 - RAGSTAR_OLLAMA_PULL_URL
 - RAGSTAR_OLLAMA_MODEL
 - RAGSTAR_OLLAMA_EMBED_MODEL
+- RAGSTAR_DB_PATH
 - RAGSTAR_GITHUB_TOKEN
 - RAGSTAR_ADMIN_TOKEN
 

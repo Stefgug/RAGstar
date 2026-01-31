@@ -64,6 +64,7 @@ jobs:
           gcloud config list --format="value(core.account,core.project)"
           gcloud container fleet memberships list --project "${{ secrets.GCP_PROJECT_ID }}"
           gcloud container fleet memberships describe "${{ secrets.GKE_CLUSTER }}" --location=global --project "${{ secrets.GCP_PROJECT_ID }}"
+          kubectl auth whoami || true
           kubectl auth can-i get pods -n ragstar
           kubectl auth can-i patch deployment/ragstar -n ragstar
           kubectl get ns

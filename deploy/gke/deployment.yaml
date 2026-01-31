@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ragstar
+  namespace: ragstar
+  labels:
+    app: ragstar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ragstar
+  template:
+    metadata:
+      labels:
+        app: ragstar
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: ragstar
+          image: IMAGE_PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: RAGSTAR_OLLAMA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ragstar-secrets
+                  key: RAGSTAR_OLLAMA_URL
+            - name: RAGSTAR_OLLAMA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ragstar-secrets
+                  key: RAGSTAR_OLLAMA_API_KEY
+            - name: RAGSTAR_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ragstar-secrets
+                  key: RAGSTAR_ADMIN_TOKEN
+            - name: RAGSTAR_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ragstar-secrets
+                  key: RAGSTAR_GITHUB_TOKEN
+                  optional: true
+            - name: RAGSTAR_LOG_LEVEL
+              value: INFO
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          volumeMounts:
+            - name: ragstar-db
+              mountPath: /app/ragstar_db
+      volumes:
+        - name: ragstar-db
+          persistentVolumeClaim:
+            claimName: ragstar-db-pvc

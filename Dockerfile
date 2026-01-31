@@ -74,9 +74,13 @@ COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --chown=appuser:appuser src /app/src
 COPY --chown=appuser:appuser ragstar.yaml /app/
 
+# Trust the Ollama proxy CA (self-signed) for outbound HTTPS
+COPY ollama-ca.crt /usr/local/share/ca-certificates/ollama-ca.crt
+RUN update-ca-certificates
+
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/ragstar_db /app/.cache && \
-    chown -R appuser:appuser /app
+    chown appuser:appuser /app/ragstar_db /app/.cache
 
 # Switch to non-root user
 USER appuser

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 class Settings:
     ollama_url: str
     ollama_pull_url: str
+    ollama_api_key: str
     ollama_model_name: str
     ollama_embedding_model_name: str
     github_token: str
@@ -119,6 +120,7 @@ settings = Settings(
     ollama_pull_url=str(
         _read_value("RAGSTAR_OLLAMA_PULL_URL", "ollama_pull_url", _derive_ollama_pull_url(_ollama_url))
     ),
+    ollama_api_key=str(_read_value("RAGSTAR_OLLAMA_API_KEY", "ollama_api_key", "")),
     ollama_model_name=str(_read_value("RAGSTAR_OLLAMA_MODEL", "ollama_model_name", "mistral")),
     ollama_embedding_model_name=str(
         _read_value(
@@ -132,11 +134,19 @@ settings = Settings(
 )
 
 
+def get_ollama_headers() -> dict[str, str] | None:
+    api_key = settings.ollama_api_key.strip()
+    if not api_key:
+        return None
+    return {"X-API-Key": api_key}
+
+
 class OllamaEmbeddingFunction(EmbeddingFunction):
-    def __init__(self, embeddings_url: str, model_name: str, timeout: int) -> None:
+    def __init__(self, embeddings_url: str, model_name: str, timeout: int, headers: dict[str, str] | None) -> None:
         self.embeddings_url = embeddings_url
         self.model_name = model_name
         self.timeout = timeout
+        self.headers = headers
         self._name = f"ollama:{self.model_name}"
 
     def name(self) -> str:
@@ -152,6 +162,7 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
                 resp = requests.post(
                     self.embeddings_url,
                     json={"model": self.model_name, "prompt": text},
+                    headers=self.headers,
                     timeout=self.timeout,
                 )
             except requests.exceptions.ConnectionError as exc:
@@ -184,6 +195,7 @@ def get_collection():
         embeddings_url=embeddings_url,
         model_name=settings.ollama_embedding_model_name,
         timeout=OLLAMA_TIMEOUT,
+        headers=get_ollama_headers(),
     )
 
     return client.get_or_create_collection(

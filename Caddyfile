@@ -1,0 +1,8 @@
+:8443 {
+  tls internal
+
+  @unauth not header X-API-Key {env.OLLAMA_API_KEY}
+  respond @unauth "unauthorized" 401
+
+  reverse_proxy ollama:11434
+}

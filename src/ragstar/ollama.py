@@ -4,7 +4,7 @@ import logging
 
 import requests
 
-from .config import settings, OLLAMA_TIMEOUT
+from .config import settings, OLLAMA_TIMEOUT, get_ollama_headers
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
         resp = requests.post(
             settings.ollama_pull_url,
             json={"name": name, "stream": False},
+            headers=get_ollama_headers(),
             timeout=OLLAMA_TIMEOUT,
         )
         if resp.status_code == 200:
@@ -39,6 +40,7 @@ def call_ollama(prompt: str) -> str | None:
         resp = requests.post(
             settings.ollama_url,
             json=payload,
+            headers=get_ollama_headers(),
             timeout=OLLAMA_TIMEOUT,
         )
         if resp.status_code == 200:
@@ -52,6 +54,7 @@ def call_ollama(prompt: str) -> str | None:
                 retry_resp = requests.post(
                     settings.ollama_url,
                     json=payload,
+                    headers=get_ollama_headers(),
                     timeout=OLLAMA_TIMEOUT,
                 )
                 if retry_resp.status_code == 200:

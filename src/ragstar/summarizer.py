@@ -1,60 +1,58 @@
 """Repository summarization using local Ollama."""
 
+import base64
 import logging
+import re
 
-import gitingest
+import requests
 
-from .config import (
-    settings,
-    GITINGEST_MAX_FILE_SIZE_MB,
-)
+from .config import settings
 from .ollama import call_ollama
 
 logger = logging.getLogger(__name__)
 
 
-def get_repo_content(repo_url: str) -> tuple[str, str, str] | None:
-    """Fetch repository content via gitingest (README.md only)."""
-    max_size_bytes = max(1, GITINGEST_MAX_FILE_SIZE_MB) * 1024 * 1024
-    try:
-        return gitingest.ingest(
-            repo_url,
-            max_file_size=max_size_bytes,
-            include_patterns={"**/[Rr][Ee][Aa][Dd][Mm][Ee].[Mm][Dd]"},
-            token=settings.github_token,
-        )
-    except Exception as exc:  # pragma: no cover - best-effort network
-        logger.warning(f"Failed to fetch README.md for {repo_url}: {exc}")
+def _parse_github_url(repo_url: str) -> tuple[str, str] | None:
+    """Extract owner and repo name from GitHub URL."""
+    # Match patterns like https://github.com/owner/repo or github.com/owner/repo
+    match = re.search(r"github\.com[:/]([^/]+)/([^/\.]+)", repo_url)
+    if not match:
+        return None
+    owner, repo = match.groups()
+    return owner, repo
+
+
+def get_repo_content(repo_url: str) -> str | None:
+    """Fetch README.md directly via GitHub API (no cloning)."""
+    parsed = _parse_github_url(repo_url)
+    if not parsed:
+        logger.warning(f"Not a valid GitHub URL: {repo_url}")
         return None
 
+    owner, repo = parsed
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/readme"
 
-def _split_by_file(content: str) -> list[tuple[str, str]]:
-    sections: list[tuple[str, str]] = []
-    current_name: str | None = None
-    current_lines: list[str] = []
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if settings.github_token:
+        headers["Authorization"] = f"Bearer {settings.github_token}"
 
-    for line in content.splitlines():
-        if line.startswith("FILE:"):
-            if current_name is not None:
-                sections.append((current_name, "\n".join(current_lines).strip("\n")))
-            current_name = line[len("FILE:") :].strip()
-            current_lines = []
-            continue
-        if current_name is not None:
-            current_lines.append(line)
+    try:
+        response = requests.get(api_url, headers=headers, timeout=30)
+        if response.status_code == 404:
+            logger.warning(f"No README found for {owner}/{repo}")
+            return None
+        response.raise_for_status()
 
-    if current_name is not None:
-        sections.append((current_name, "\n".join(current_lines).strip("\n")))
-
-    return sections
-
-
-def _extract_readme(sections: list[tuple[str, str]]) -> str:
-    for name, body in sections:
-        base = name.split("/")[-1].split("\\")[-1]
-        if base.lower() == "readme.md":
-            return body.strip()
-    return ""
+        data = response.json()
+        # GitHub API returns content as base64-encoded
+        content = base64.b64decode(data["content"]).decode("utf-8")
+        return content
+    except requests.exceptions.Timeout:
+        logger.warning(f"Timeout fetching README for {repo_url}")
+        return None
+    except Exception as exc:
+        logger.warning(f"Failed to fetch README for {repo_url}: {exc}")
+        return None
 
 
 # -------- Public API -------- #
@@ -63,27 +61,18 @@ def _extract_readme(sections: list[tuple[str, str]]) -> str:
 def generate_summary(repo_url: str, repo_name: str) -> str:
     """Generate a summary based on README.md only."""
     logger.debug(f"Fetching README.md for {repo_name}")
-    result = get_repo_content(repo_url)
-    if not result:
-        return "no README.md found"
-
-    _, _tree, content = result
-    if not content:
-        return "no README.md found"
-
-    sections = _split_by_file(content)
-    readme_block = _extract_readme(sections)
-    if not readme_block:
+    readme_content = get_repo_content(repo_url)
+    if not readme_content:
         return "no README.md found"
 
     prompt_blocks = f"""
 Repository: {repo_name}
 
 [README]
-{readme_block}
+{readme_content}
 """
 
-    prompt = f"""You are a technical writer creating a concise, human-readable repository summary for a developer knowledge base.
+    prompt = f"""You are a technical writer creating a concise, human-readable repository summary for a developer knowledge base from the README of {repo_name}.
 
 Write exactly 6 sentences about {repo_name}. Use one sentence per section, in this exact order:
 1) What & Why 2) Core Features 3) Use Case 4) Tech Stack 5) Integration 6) Strengths.

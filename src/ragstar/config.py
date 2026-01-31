@@ -31,7 +31,6 @@ class Settings:
 
 # Hardcoded defaults (simple app, rarely changed)
 OLLAMA_EMBEDDING_MODEL_DEFAULT = "nomic-embed-text"
-GITINGEST_MAX_FILE_SIZE_MB = 3
 OLLAMA_TIMEOUT = 180
 CHROMA_COLLECTION_NAME = "repositories"
 

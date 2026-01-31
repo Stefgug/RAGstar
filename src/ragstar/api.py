@@ -14,7 +14,6 @@ from .config import (
     settings,
     clear_database,
     CHROMA_DB_PATH,
-    GITINGEST_MAX_FILE_SIZE_MB,
 )
 from .index import build_index, iter_build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
@@ -73,7 +72,6 @@ def get_config() -> dict[str, Any]:
     return {
         "embedding_model": settings.ollama_embedding_model_name,
         "ollama_model_name": settings.ollama_model_name,
-        "gitingest_max_file_size_mb": GITINGEST_MAX_FILE_SIZE_MB,
     }
 
 

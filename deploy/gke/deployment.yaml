@@ -7,6 +7,8 @@ metadata:
     app: ragstar
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: ragstar
@@ -19,9 +21,13 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+      hostAliases:
+        - ip: 90.92.127.233
+          hostnames:
+            - ollama.local
       containers:
         - name: ragstar
-          image: IMAGE_PLACEHOLDER
+          image: europe-west9-docker.pkg.dev/ragstar/ragstar/ragstar:20260131-1
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
@@ -49,6 +55,8 @@ spec:
                   optional: true
             - name: RAGSTAR_LOG_LEVEL
               value: INFO
+            - name: OLLAMA_CA_CERT
+              value: /etc/ssl/certs/ollama-ca.crt
           readinessProbe:
             httpGet:
               path: /health
@@ -69,9 +77,16 @@ spec:
               cpu: 1000m
               memory: 2Gi
           volumeMounts:
+            - name: ollama-ca
+              mountPath: /etc/ssl/certs/ollama-ca.crt
+              subPath: ollama-ca.crt
+              readOnly: true
             - name: ragstar-db
               mountPath: /app/ragstar_db
       volumes:
+        - name: ollama-ca
+          secret:
+            secretName: ollama-ca
         - name: ragstar-db
           persistentVolumeClaim:
             claimName: ragstar-db-pvc

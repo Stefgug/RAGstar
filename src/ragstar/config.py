@@ -6,8 +6,10 @@ from typing import Any
 import os
 import shutil
 import logging
+import tempfile
 
 import requests
+import certifi
 from chromadb import PersistentClient
 from chromadb.api.types import EmbeddingFunction, Documents, Embeddings
 import yaml
@@ -42,8 +44,15 @@ def _ensure_db_writable(path: Path) -> None:
         return
 
     def _chmod_writable(target: Path) -> None:
+        if os.access(target, os.W_OK):
+            return
         try:
             target.chmod(target.stat().st_mode | 0o200)
+        except PermissionError as exc:  # pragma: no cover - best-effort filesystem
+            if target.name == "lost+found":
+                logger.debug(f"Skipping permission update for {target}: {exc}")
+            else:
+                logger.debug(f"Permission update skipped for {target}: {exc}")
         except Exception as exc:  # pragma: no cover - best-effort filesystem
             logger.warning(f"Failed to set write permission on {target}: {exc}")
 
@@ -134,6 +143,30 @@ settings = Settings(
 )
 
 
+_ollama_verify_bundle: str | None = None
+
+
+def get_ollama_verify() -> str | bool:
+    global _ollama_verify_bundle
+    ca_path = os.getenv("OLLAMA_CA_CERT", "").strip()
+    if not ca_path:
+        return True
+    if _ollama_verify_bundle:
+        return _ollama_verify_bundle
+    try:
+        with open(certifi.where(), "rb") as base_handle, open(ca_path, "rb") as ca_handle:
+            bundle = base_handle.read() + b"\n" + ca_handle.read()
+        tmp = tempfile.NamedTemporaryFile(prefix="ollama-ca-", suffix=".crt", delete=False)
+        tmp.write(bundle)
+        tmp.flush()
+        tmp.close()
+        _ollama_verify_bundle = tmp.name
+        return _ollama_verify_bundle
+    except Exception as exc:  # pragma: no cover - best-effort TLS setup
+        logger.warning(f"Failed to build Ollama CA bundle: {exc}")
+        return ca_path
+
+
 def get_ollama_headers() -> dict[str, str] | None:
     api_key = settings.ollama_api_key.strip()
     if not api_key:
@@ -164,6 +197,7 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
                     json={"model": self.model_name, "prompt": text},
                     headers=self.headers,
                     timeout=self.timeout,
+                    verify=get_ollama_verify(),
                 )
             except requests.exceptions.ConnectionError as exc:
                 raise RuntimeError("Cannot connect to Ollama embeddings service") from exc

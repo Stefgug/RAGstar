@@ -58,6 +58,16 @@ jobs:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           use_connect_gateway: true
 
+      - name: Debug Connect Gateway auth
+        run: |
+          gcloud auth list --format="value(account)"
+          gcloud config list account project
+          gcloud container fleet memberships list --project "${{ secrets.GCP_PROJECT_ID }}"
+          gcloud container fleet memberships describe "${{ secrets.GKE_CLUSTER }}" --location=global --project "${{ secrets.GCP_PROJECT_ID }}"
+          kubectl auth can-i get pods -n ragstar
+          kubectl auth can-i patch deployment/ragstar -n ragstar
+          kubectl get ns
+
       - name: Deploy to GKE
         run: |
           IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"

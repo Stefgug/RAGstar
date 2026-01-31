@@ -8,7 +8,6 @@ wheels/
 
 # Virtual environments
 .venv/
-uv.lock
 .python-version
 
 # Local env files
@@ -19,5 +18,10 @@ uv.lock
 ragstar_db/
 
 .docker-cache/
+.docker-*.log
+.docker-*.txt
+.gcloud-*.log
+.gke-*.txt
 
 .vscode/
+*.crt

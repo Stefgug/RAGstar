@@ -2,8 +2,6 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    ports:
-      - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
     deploy:
@@ -54,8 +52,24 @@ services:
     command: >
       sh -c "apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && pip install uv && uv sync && uv run uvicorn ragstar.api:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src"
 
+  ollama-proxy:
+    image: caddy:2
+    container_name: ollama-proxy
+    depends_on:
+      - ollama
+    ports:
+      - "8443:8443"
+    environment:
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
 volumes:
   ragstar-db:
   ollama-data:
   dev-venv:
   dev-cache:
+  caddy-data:
+  caddy-config:

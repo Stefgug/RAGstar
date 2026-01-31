@@ -53,6 +53,6 @@ ragstar_db/
 .env
 .env.*
 
-# Lock files (only pyproject.toml is needed)
-uv.lock
+# Lock files
+# uv.lock is needed for reproducible builds
 .python-version

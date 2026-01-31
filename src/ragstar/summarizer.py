@@ -20,7 +20,7 @@ def get_repo_content(repo_url: str) -> tuple[str, str, str] | None:
         return gitingest.ingest(
             repo_url,
             max_file_size=max_size_bytes,
-            include_patterns={"**/README.md"},
+            include_patterns={"**/[Rr][Ee][Aa][Dd][Mm][Ee].[Mm][Dd]"},
             token=settings.github_token,
         )
     except Exception as exc:  # pragma: no cover - best-effort network
@@ -52,7 +52,7 @@ def _split_by_file(content: str) -> list[tuple[str, str]]:
 def _extract_readme(sections: list[tuple[str, str]]) -> str:
     for name, body in sections:
         base = name.split("/")[-1].split("\\")[-1]
-        if base == "README.md":
+        if base.lower() == "readme.md":
             return body.strip()
     return ""
 

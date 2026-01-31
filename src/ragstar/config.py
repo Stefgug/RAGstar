@@ -6,10 +6,12 @@ from typing import Any
 import os
 import shutil
 import logging
+import tempfile
 
+import requests
+import certifi
 from chromadb import PersistentClient
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-from huggingface_hub import snapshot_download
+from chromadb.api.types import EmbeddingFunction, Documents, Embeddings
 import yaml
 
 # Module logger - configuration should be done at application level
@@ -20,17 +22,43 @@ logger = logging.getLogger(__name__)
 class Settings:
     ollama_url: str
     ollama_pull_url: str
+    ollama_api_key: str
     ollama_model_name: str
+    ollama_embedding_model_name: str
     github_token: str
     admin_token: str
 
 
 # Hardcoded defaults (simple app, rarely changed)
-CHROMA_DB_PATH = Path("./ragstar_db")
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+OLLAMA_EMBEDDING_MODEL_DEFAULT = "nomic-embed-text"
 GITINGEST_MAX_FILE_SIZE_MB = 3
 OLLAMA_TIMEOUT = 180
 CHROMA_COLLECTION_NAME = "repositories"
+
+
+def _ensure_db_writable(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:  # pragma: no cover - best-effort filesystem
+        logger.warning(f"Failed to create database path {path}: {exc}")
+        return
+
+    def _chmod_writable(target: Path) -> None:
+        if os.access(target, os.W_OK):
+            return
+        try:
+            target.chmod(target.stat().st_mode | 0o200)
+        except PermissionError as exc:  # pragma: no cover - best-effort filesystem
+            if target.name == "lost+found":
+                logger.debug(f"Skipping permission update for {target}: {exc}")
+            else:
+                logger.debug(f"Permission update skipped for {target}: {exc}")
+        except Exception as exc:  # pragma: no cover - best-effort filesystem
+            logger.warning(f"Failed to set write permission on {target}: {exc}")
+
+    _chmod_writable(path)
+    for child in path.glob("**/*"):
+        _chmod_writable(child)
 
 
 
@@ -71,11 +99,28 @@ def _read_required_str(env_name: str, key: str) -> str:
     return str(value).strip()
 
 
+def _read_db_path() -> Path:
+    value = _read_value("RAGSTAR_DB_PATH", "chroma_db_path", "./ragstar_db")
+    return Path(str(value)).expanduser()
+
+
+CHROMA_DB_PATH = _read_db_path()
+
+
 def _derive_ollama_pull_url(generate_url: str) -> str:
     trimmed = generate_url.rstrip("/")
     if trimmed.endswith("/api/generate"):
         return trimmed[: -len("/api/generate")] + "/api/pull"
     return f"{trimmed}/api/pull"
+
+
+def _derive_ollama_embeddings_url(generate_url: str) -> str:
+    trimmed = generate_url.rstrip("/")
+    if trimmed.endswith("/api/generate"):
+        return trimmed[: -len("/api/generate")] + "/api/embeddings"
+    if trimmed.endswith("/api/embeddings"):
+        return trimmed
+    return f"{trimmed}/api/embeddings"
 
 
 _ollama_url = _read_required_str("RAGSTAR_OLLAMA_URL", "ollama_url")
@@ -84,43 +129,108 @@ settings = Settings(
     ollama_pull_url=str(
         _read_value("RAGSTAR_OLLAMA_PULL_URL", "ollama_pull_url", _derive_ollama_pull_url(_ollama_url))
     ),
+    ollama_api_key=str(_read_value("RAGSTAR_OLLAMA_API_KEY", "ollama_api_key", "")),
     ollama_model_name=str(_read_value("RAGSTAR_OLLAMA_MODEL", "ollama_model_name", "mistral")),
+    ollama_embedding_model_name=str(
+        _read_value(
+            "RAGSTAR_OLLAMA_EMBED_MODEL",
+            "ollama_embedding_model_name",
+            OLLAMA_EMBEDDING_MODEL_DEFAULT,
+        )
+    ),
     github_token=str(_read_value("RAGSTAR_GITHUB_TOKEN", "github_token", "")),
     admin_token=str(_read_value("RAGSTAR_ADMIN_TOKEN", "admin_token", "")),
 )
 
 
-def _resolve_embedding_model_source() -> str:
-    model_path = Path(EMBEDDING_MODEL)
-    if model_path.exists():
-        logger.info(f"Using local embedding model path: {model_path}")
-        return str(model_path)
+_ollama_verify_bundle: str | None = None
 
+
+def get_ollama_verify() -> str | bool:
+    global _ollama_verify_bundle
+    ca_path = os.getenv("OLLAMA_CA_CERT", "").strip()
+    if not ca_path:
+        return True
+    if _ollama_verify_bundle:
+        return _ollama_verify_bundle
     try:
-        local_path = snapshot_download(
-            repo_id=EMBEDDING_MODEL,
-            local_files_only=True,
-        )
-        logger.info(f"Using locally cached embedding model at {local_path}")
-        return local_path
-    except Exception:
-        logger.info(
-            f"Embedding model '{EMBEDDING_MODEL}' not found in local cache; "
-            "downloading from Hugging Face."
-        )
+        with open(certifi.where(), "rb") as base_handle, open(ca_path, "rb") as ca_handle:
+            bundle = base_handle.read() + b"\n" + ca_handle.read()
+        tmp = tempfile.NamedTemporaryFile(prefix="ollama-ca-", suffix=".crt", delete=False)
+        tmp.write(bundle)
+        tmp.flush()
+        tmp.close()
+        _ollama_verify_bundle = tmp.name
+        return _ollama_verify_bundle
+    except Exception as exc:  # pragma: no cover - best-effort TLS setup
+        logger.warning(f"Failed to build Ollama CA bundle: {exc}")
+        return ca_path
 
-    return snapshot_download(
-        repo_id=EMBEDDING_MODEL,
-        local_files_only=False,
-    )
+
+def get_ollama_headers() -> dict[str, str] | None:
+    api_key = settings.ollama_api_key.strip()
+    if not api_key:
+        return None
+    return {"X-API-Key": api_key}
+
+
+class OllamaEmbeddingFunction(EmbeddingFunction):
+    def __init__(self, embeddings_url: str, model_name: str, timeout: int, headers: dict[str, str] | None) -> None:
+        self.embeddings_url = embeddings_url
+        self.model_name = model_name
+        self.timeout = timeout
+        self.headers = headers
+        self._name = f"ollama:{self.model_name}"
+
+    def name(self) -> str:
+        return self._name
+
+    def __call__(self, input: Documents) -> Embeddings:
+        if not input:
+            return []
+
+        embeddings: list[list[float]] = []
+        for text in input:
+            try:
+                resp = requests.post(
+                    self.embeddings_url,
+                    json={"model": self.model_name, "prompt": text},
+                    headers=self.headers,
+                    timeout=self.timeout,
+                    verify=get_ollama_verify(),
+                )
+            except requests.exceptions.ConnectionError as exc:
+                raise RuntimeError("Cannot connect to Ollama embeddings service") from exc
+            except Exception as exc:  # pragma: no cover - network error
+                raise RuntimeError(f"Ollama embeddings request failed: {exc}") from exc
+
+            if resp.status_code != 200:
+                raise RuntimeError(
+                    "Ollama embeddings request failed "
+                    f"({resp.status_code}): {resp.text}"
+                )
+
+            payload = resp.json()
+            embedding = payload.get("embedding")
+            if not embedding:
+                raise RuntimeError("Ollama embeddings response missing 'embedding'")
+
+            embeddings.append(embedding)
+
+        return embeddings
 
 
 def get_collection():
+    _ensure_db_writable(CHROMA_DB_PATH)
     client = PersistentClient(path=str(CHROMA_DB_PATH))
 
-    model_source = _resolve_embedding_model_source()
-
-    embedding_fn = SentenceTransformerEmbeddingFunction(model_name=model_source)
+    embeddings_url = _derive_ollama_embeddings_url(settings.ollama_url)
+    embedding_fn = OllamaEmbeddingFunction(
+        embeddings_url=embeddings_url,
+        model_name=settings.ollama_embedding_model_name,
+        timeout=OLLAMA_TIMEOUT,
+        headers=get_ollama_headers(),
+    )
 
     return client.get_or_create_collection(
         name=CHROMA_COLLECTION_NAME,
@@ -131,6 +241,8 @@ def get_collection():
 
 def clear_database() -> bool:
     db_path = Path(CHROMA_DB_PATH)
+
+    _ensure_db_writable(db_path)
 
     try:
         client = PersistentClient(path=str(db_path))
@@ -154,6 +266,7 @@ def clear_database() -> bool:
             else:
                 child.unlink()
         logger.info(f"Cleared database contents at {db_path}")
+        _ensure_db_writable(db_path)
         return True
     except Exception as exc:
         logger.error(f"Error clearing database contents: {exc}")

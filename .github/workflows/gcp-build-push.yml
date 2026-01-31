@@ -36,9 +36,6 @@ jobs:
       - name: Configure Docker auth
         run: gcloud auth configure-docker "${{ env.REGION }}-docker.pkg.dev" --quiet
 
-      - name: Enable GKE Hub API
-        run: gcloud services enable gkehub.googleapis.com --quiet
-
       - name: Write Ollama CA cert
         run: |
           printf "%s" "${{ secrets.OLLAMA_CA_CRT }}" > ollama-ca.crt

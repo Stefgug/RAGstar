@@ -61,7 +61,7 @@ jobs:
       - name: Debug Connect Gateway auth
         run: |
           gcloud auth list --format="value(account)"
-          gcloud config list account project
+          gcloud config list --format="value(core.account,core.project)"
           gcloud container fleet memberships list --project "${{ secrets.GCP_PROJECT_ID }}"
           gcloud container fleet memberships describe "${{ secrets.GKE_CLUSTER }}" --location=global --project "${{ secrets.GCP_PROJECT_ID }}"
           kubectl auth can-i get pods -n ragstar

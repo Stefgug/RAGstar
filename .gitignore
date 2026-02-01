@@ -25,3 +25,4 @@ ragstar_db/
 
 .vscode/
 *.crt
+ollama logs.txt

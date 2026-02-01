@@ -28,8 +28,8 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
     return False
 
 
-def call_ollama(prompt: str) -> str | None:
-    """Call local Ollama model. Returns text or None on failure."""
+def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
+    """Call local Ollama model. Returns (text, token_info) or (None, None) on failure."""
     payload = {
         "model": settings.ollama_model_name,
         "prompt": prompt,
@@ -50,7 +50,14 @@ def call_ollama(prompt: str) -> str | None:
             verify=get_ollama_verify(),
         )
         if resp.status_code == 200:
-            return resp.json().get("response", "").strip()
+            data = resp.json()
+            text = data.get("response", "").strip()
+            token_info = {
+                "prompt_tokens": data.get("prompt_eval_count", 0),
+                "completion_tokens": data.get("eval_count", 0),
+                "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
+            }
+            return text, token_info
 
         # If model not found, try to pull it once
         if resp.status_code == 404:
@@ -65,7 +72,14 @@ def call_ollama(prompt: str) -> str | None:
                     verify=get_ollama_verify(),
                 )
                 if retry_resp.status_code == 200:
-                    return retry_resp.json().get("response", "").strip()
+                    data = retry_resp.json()
+                    text = data.get("response", "").strip()
+                    token_info = {
+                        "prompt_tokens": data.get("prompt_eval_count", 0),
+                        "completion_tokens": data.get("eval_count", 0),
+                        "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
+                    }
+                    return text, token_info
                 logger.error(f"Ollama retry failed ({retry_resp.status_code})")
             else:
                 logger.error(f"Failed to pull model {settings.ollama_model_name}")
@@ -74,8 +88,8 @@ def call_ollama(prompt: str) -> str | None:
 
     except requests.exceptions.ConnectionError:
         logger.warning("Cannot connect to Ollama service")
-        return None
+        return None, None
     except Exception as exc:  # pragma: no cover - best-effort network
         logger.error(f"Ollama error: {exc}")
 
-    return None
+    return None, None

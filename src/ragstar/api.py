@@ -181,7 +181,7 @@ def ask_question(
         f"Answer concisely with the most relevant repository URL(s):"
     )
 
-    answer = call_ollama(prompt)
+    answer, token_info = call_ollama(prompt)
     if answer is None:
         raise HTTPException(status_code=502, detail="Failed to get answer from Ollama")
 
@@ -189,4 +189,5 @@ def ask_question(
         "question": question,
         "answer": answer,
         "sources": results,
+        "tokens": token_info,
     }

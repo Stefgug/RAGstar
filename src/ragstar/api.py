@@ -165,23 +165,20 @@ def ask_question(
     """Answer a question using the indexed repository summaries."""
     results = search_repositories(question, num_results=num_results)
 
-    # Build context with repository URLs
+    # Build context with repository information (optimized for token efficiency)
     repo_contexts = []
     for item in results:
+        # Limit summary length to reduce context size and improve speed
+        summary = item['summary'][:500] if item['summary'] else ""
         repo_contexts.append(
-            f"Repository: {item['repo_name']}\n"
-            f"URL: {item['repo_url']}\n"
-            f"Summary: {item['summary']}"
+            f"Repo: {item['repo_name']}\nURL: {item['repo_url']}\nSummary: {summary}"
         )
-    combined_context = "\n\n---\n\n".join(repo_contexts)
+    combined_context = "\n\n".join(repo_contexts)
 
     prompt = (
-        f"You are an AI assistant that provides guidance to the best repository or repositories to answer question with the following context\n"
-        f"{combined_context}\n\n"
-        f"Question: {question}\n\n"
-        f"Instructions: Answer the question based on the repository summaries above. "
-        f"Include the URL(s) of the most relevant repository or repositories in your answer."
-        f"\n\nAnswer:"
+        f"Based on the repository summaries below, answer this question: {question}\n\n"
+        f"Repositories:\n{combined_context}\n\n"
+        f"Answer concisely with the most relevant repository URL(s):"
     )
 
     answer = call_ollama(prompt)

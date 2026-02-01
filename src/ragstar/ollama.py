@@ -36,6 +36,9 @@ def call_ollama(prompt: str) -> str | None:
         "stream": False,
         "temperature": 0.4,
         "num_ctx": settings.ollama_context_window,
+        "num_predict": 150,  # Limit output tokens for faster responses
+        "top_k": 40,         # Reduce vocabulary search space
+        "top_p": 0.9,        # Nucleus sampling for focused answers
     }
 
     try:

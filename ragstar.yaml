@@ -3,6 +3,7 @@
 ollama_url: http://ollama:11434/api/generate
 ollama_model_name: mistral
 ollama_embedding_model_name: nomic-embed-text
+ollama_context_window: 4096  # Optimized from 8192 for faster response times
 chroma_db_path: ./ragstar_db
 github_token: ""
 admin_token: ""

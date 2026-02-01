@@ -33,7 +33,7 @@ class Settings:
 
 # Hardcoded defaults (simple app, rarely changed)
 OLLAMA_EMBEDDING_MODEL_DEFAULT = "mxbai-embed-large"
-OLLAMA_CONTEXT_WINDOW_DEFAULT = 8192  # For text generation (Mistral)
+OLLAMA_CONTEXT_WINDOW_DEFAULT = 4096  # For text generation (Mistral) - optimized for response time
 OLLAMA_EMBEDDING_CONTEXT_WINDOW_DEFAULT = 2048  # For embeddings (mxbai-embed-large)
 OLLAMA_TIMEOUT = 180
 CHROMA_COLLECTION_NAME = "repositories"

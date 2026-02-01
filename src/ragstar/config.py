@@ -26,13 +26,15 @@ class Settings:
     ollama_model_name: str
     ollama_embedding_model_name: str
     ollama_context_window: int
+    ollama_embedding_context_window: int
     github_token: str
     admin_token: str
 
 
 # Hardcoded defaults (simple app, rarely changed)
 OLLAMA_EMBEDDING_MODEL_DEFAULT = "mxbai-embed-large"
-OLLAMA_CONTEXT_WINDOW_DEFAULT = 2048
+OLLAMA_CONTEXT_WINDOW_DEFAULT = 8192  # For text generation (Mistral)
+OLLAMA_EMBEDDING_CONTEXT_WINDOW_DEFAULT = 2048  # For embeddings (mxbai-embed-large)
 OLLAMA_TIMEOUT = 180
 CHROMA_COLLECTION_NAME = "repositories"
 
@@ -144,6 +146,11 @@ settings = Settings(
         "ollama_context_window",
         OLLAMA_CONTEXT_WINDOW_DEFAULT,
     )),
+    ollama_embedding_context_window=int(_read_value(
+        "RAGSTAR_OLLAMA_EMBEDDING_CONTEXT_WINDOW",
+        "ollama_embedding_context_window",
+        OLLAMA_EMBEDDING_CONTEXT_WINDOW_DEFAULT,
+    )),
     github_token=str(_read_value("RAGSTAR_GITHUB_TOKEN", "github_token", "")),
     admin_token=str(_read_value("RAGSTAR_ADMIN_TOKEN", "admin_token", "")),
 )
@@ -240,7 +247,7 @@ def get_collection():
         model_name=settings.ollama_embedding_model_name,
         timeout=OLLAMA_TIMEOUT,
         headers=get_ollama_headers(),
-        context_window=settings.ollama_context_window,
+        context_window=settings.ollama_embedding_context_window,
     )
 
     return client.get_or_create_collection(

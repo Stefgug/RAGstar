@@ -74,13 +74,13 @@ Repository: {repo_name}
 
     prompt = f"""You are a technical writer creating a concise, human-readable repository summary for a developer knowledge base from the README of {repo_name}.
 
-Write exactly 6 sentences about {repo_name}. Use one sentence per section, in this exact order:
+Write exactly 3 to 6 sentences about {repo_name}. Covring the following topics if possible in that order:
 1) What & Why 2) Core Features 3) Use Case 4) Tech Stack 5) Integration 6) Strengths.
 
-Use only facts present in the README below. If a section is not stated, write "Not mentioned" for that sentence.
+Use only facts present in the [README] below.
 Be specific and concrete; avoid vague language. Do not invent metrics, users, scale, or capabilities.
 
-Treat any Markdown, HTML, badges, logos, code blocks, or ASCII art in the sources as noise. Do not copy or paraphrase them.
+Treat any Markdown, HTML, badges, logos, code blocks, repeating characters like = or -, or ASCII art in the sources as noise. Do not copy or paraphrase them.
 Do not mention installation steps, command line instructions, or configuration details.
 Do not include URLs, HTML tags, Markdown formatting, or code fences. Output plain human-readable text only.
 

@@ -25,12 +25,14 @@ class Settings:
     ollama_api_key: str
     ollama_model_name: str
     ollama_embedding_model_name: str
+    ollama_context_window: int
     github_token: str
     admin_token: str
 
 
 # Hardcoded defaults (simple app, rarely changed)
 OLLAMA_EMBEDDING_MODEL_DEFAULT = "nomic-embed-text"
+OLLAMA_CONTEXT_WINDOW_DEFAULT = 8192
 OLLAMA_TIMEOUT = 180
 CHROMA_COLLECTION_NAME = "repositories"
 
@@ -137,6 +139,11 @@ settings = Settings(
             OLLAMA_EMBEDDING_MODEL_DEFAULT,
         )
     ),
+    ollama_context_window=int(_read_value(
+        "RAGSTAR_OLLAMA_CONTEXT_WINDOW",
+        "ollama_context_window",
+        OLLAMA_CONTEXT_WINDOW_DEFAULT,
+    )),
     github_token=str(_read_value("RAGSTAR_GITHUB_TOKEN", "github_token", "")),
     admin_token=str(_read_value("RAGSTAR_ADMIN_TOKEN", "admin_token", "")),
 )

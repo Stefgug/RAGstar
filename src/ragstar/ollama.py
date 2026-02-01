@@ -35,6 +35,7 @@ def call_ollama(prompt: str) -> str | None:
         "prompt": prompt,
         "stream": False,
         "temperature": 0.4,
+        "num_ctx": settings.ollama_context_window,
     }
 
     try:

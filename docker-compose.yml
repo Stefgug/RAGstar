@@ -2,6 +2,9 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    depends_on:
+      - ollama-proxy
+      - ollama-keepwarm
     volumes:
       - ollama-data:/root/.ollama
     deploy:
@@ -55,8 +58,6 @@ services:
   ollama-proxy:
     image: caddy:2
     container_name: ollama-proxy
-    depends_on:
-      - ollama
     ports:
       - "8443:8443"
     environment:
@@ -69,12 +70,14 @@ services:
   ollama-keepwarm:
     image: curlimages/curl:latest
     container_name: ollama-keepwarm
-    depends_on:
-      - ollama
     restart: unless-stopped
     entrypoint: /bin/sh
     command: >
-      -c "while true; do
+      -c "until curl -sf http://ollama:11434/api/tags > /dev/null; do
+        echo 'waiting for ollama...';
+        sleep 5;
+      done;
+      while true; do
         curl -s http://ollama:11434/api/generate -d '{\"model\":\"mistral\",\"prompt\":\"ping\",\"keep_alive\":-1}' > /dev/null;
         curl -s http://ollama:11434/api/embeddings -d '{\"model\":\"mxbai-embed-large\",\"prompt\":\"ping\",\"keep_alive\":-1}' > /dev/null;
         sleep 280;

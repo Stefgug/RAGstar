@@ -31,7 +31,7 @@ class Settings:
 
 
 # Hardcoded defaults (simple app, rarely changed)
-OLLAMA_EMBEDDING_MODEL_DEFAULT = "nomic-embed-text"
+OLLAMA_EMBEDDING_MODEL_DEFAULT = "mxbai-embed-large"
 OLLAMA_CONTEXT_WINDOW_DEFAULT = 8192
 OLLAMA_TIMEOUT = 180
 CHROMA_COLLECTION_NAME = "repositories"
@@ -181,11 +181,12 @@ def get_ollama_headers() -> dict[str, str] | None:
 
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
-    def __init__(self, embeddings_url: str, model_name: str, timeout: int, headers: dict[str, str] | None) -> None:
+    def __init__(self, embeddings_url: str, model_name: str, timeout: int, headers: dict[str, str] | None, context_window: int | None = None) -> None:
         self.embeddings_url = embeddings_url
         self.model_name = model_name
         self.timeout = timeout
         self.headers = headers
+        self.context_window = context_window
         self._name = f"ollama:{self.model_name}"
 
     def name(self) -> str:
@@ -198,9 +199,12 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
         embeddings: list[list[float]] = []
         for text in input:
             try:
+                payload = {"model": self.model_name, "prompt": text}
+                if self.context_window:
+                    payload["num_ctx"] = self.context_window
                 resp = requests.post(
                     self.embeddings_url,
-                    json={"model": self.model_name, "prompt": text},
+                    json=payload,
                     headers=self.headers,
                     timeout=self.timeout,
                     verify=get_ollama_verify(),
@@ -236,6 +240,7 @@ def get_collection():
         model_name=settings.ollama_embedding_model_name,
         timeout=OLLAMA_TIMEOUT,
         headers=get_ollama_headers(),
+        context_window=settings.ollama_context_window,
     )
 
     return client.get_or_create_collection(

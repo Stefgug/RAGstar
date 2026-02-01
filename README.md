@@ -26,7 +26,7 @@ Minimal example:
 ```yaml
 ollama_url: http://ollama:11434/api/generate
 ollama_model_name: mistral
-ollama_embedding_model_name: nomic-embed-text
+ollama_embedding_model_name: mxbai-embed-large
 chroma_db_path: ./ragstar_db
 github_token: ""
 admin_token: ""

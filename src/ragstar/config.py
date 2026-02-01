@@ -32,7 +32,7 @@ class Settings:
 
 # Hardcoded defaults (simple app, rarely changed)
 OLLAMA_EMBEDDING_MODEL_DEFAULT = "mxbai-embed-large"
-OLLAMA_CONTEXT_WINDOW_DEFAULT = 8192
+OLLAMA_CONTEXT_WINDOW_DEFAULT = 2048
 OLLAMA_TIMEOUT = 180
 CHROMA_COLLECTION_NAME = "repositories"
 

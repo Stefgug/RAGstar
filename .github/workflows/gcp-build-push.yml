@@ -3,7 +3,7 @@ name: Build and Push Ragstar Image
 on:
   push:
     branches:
-      - Ollama-facto
+      - master
   workflow_dispatch:
 
 permissions:

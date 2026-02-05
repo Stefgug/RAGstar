@@ -4,7 +4,8 @@ RAG service that helps users find the right GitHub repo by asking a natural lang
 
 Demo: https://stefgug.dev/portfolio/RAGstar
 
-<img width="1376" height="795" alt="image" src="https://github.com/user-attachments/assets/ca49b8dd-0ee4-47c0-a943-616a5650a5b6" />
+<img width="1376" height="795" alt="image" src="https://github.com/user-attachments/assets/e388f952-c568-4247-ac66-04c84a879eef" />
+
 
 
 ## What it does

@@ -11,4 +11,5 @@ admin_token: ""
 openai_base_url: https://api.openai.com/v1
 openai_model_name: gpt-4o-mini
 openai_embedding_model_name: text-embedding-3-small
+openai_embedding_dimensions: 768  # Must match the Ollama embedding model dimensions (nomic-embed-text = 768)
 openai_timeout: 30

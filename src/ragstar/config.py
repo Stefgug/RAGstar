@@ -36,6 +36,7 @@ class Settings:
     openai_base_url: str
     openai_model_name: str
     openai_embedding_model_name: str
+    openai_embedding_dimensions: int
     openai_timeout: int
 
 
@@ -46,7 +47,7 @@ OLLAMA_EMBEDDING_CONTEXT_WINDOW_DEFAULT = 2048  # For embeddings (mxbai-embed-la
 OLLAMA_TIMEOUT = 180
 OLLAMA_FALLBACK_TIMEOUT_DEFAULT = 5
 OPENAI_TIMEOUT_DEFAULT = 30
-OPENAI_EMBEDDING_DIMENSIONS = 1024  # Match mxbai-embed-large dimensions
+OPENAI_EMBEDDING_DIMENSIONS_DEFAULT = 768  # Match nomic-embed-text dimensions
 CHROMA_COLLECTION_NAME = "repositories"
 
 
@@ -177,6 +178,11 @@ settings = Settings(
         "openai_embedding_model_name",
         "text-embedding-3-small",
     )),
+    openai_embedding_dimensions=int(_read_value(
+        "OPENAI_EMBEDDING_DIMENSIONS",
+        "openai_embedding_dimensions",
+        OPENAI_EMBEDDING_DIMENSIONS_DEFAULT,
+    )),
     openai_timeout=int(_read_value("OPENAI_TIMEOUT", "openai_timeout", OPENAI_TIMEOUT_DEFAULT)),
 )
 
@@ -295,7 +301,7 @@ def _fallback_openai_embedding(text: str, reason: str) -> list[float] | None:
         base_url=settings.openai_base_url,
         model=settings.openai_embedding_model_name,
         timeout=settings.openai_timeout,
-        dimensions=OPENAI_EMBEDDING_DIMENSIONS,
+        dimensions=settings.openai_embedding_dimensions,
     )
     if not embeddings:
         return None

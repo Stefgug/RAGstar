@@ -72,5 +72,6 @@ jobs:
       - name: Deploy to GKE
         run: |
           IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          kubectl apply -f deploy/gke/deployment.yaml
           kubectl -n ragstar set image deployment/ragstar ragstar="$IMAGE"
-          kubectl -n ragstar rollout status deployment/ragstar --timeout=120s
+          kubectl -n ragstar rollout status deployment/ragstar --timeout=180s

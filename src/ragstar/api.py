@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Header, Body
@@ -20,11 +21,16 @@ from .index import build_index, iter_build_index
 from .search import search_repositories, get_summary_by_name, list_all_summaries
 from .ollama import pull_ollama_model, call_ollama
 
-# Configure logging at application level
+# Configure logging at application level - use stdout so Cloud Logging
+# correctly interprets severity (stderr = ERROR in GKE)
 log_level_str = os.getenv("RAGSTAR_LOG_LEVEL", "INFO").upper()
 valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 log_level = getattr(logging, log_level_str if log_level_str in valid_levels else "INFO")
-logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAGstar API", version="0.1.0")

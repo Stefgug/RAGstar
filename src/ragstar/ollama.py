@@ -29,8 +29,11 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
     return False
 
 
-def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
-    """Call local Ollama model with OpenAI fallback on failure."""
+def call_ollama(prompt: str) -> tuple[str, dict[str, int], str] | tuple[None, None, str]:
+    """Call local Ollama model with OpenAI fallback on failure.
+
+    Returns (text, token_info, backend) where backend is 'ollama' or 'openai'.
+    """
     payload = {
         "model": settings.ollama_model_name,
         "prompt": prompt,
@@ -58,7 +61,7 @@ def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
                 "completion_tokens": data.get("eval_count", 0),
                 "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
             }
-            return text, token_info
+            return text, token_info, "ollama"
 
         # If model not found, try to pull it once
         if resp.status_code == 404:
@@ -80,7 +83,7 @@ def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
                         "completion_tokens": data.get("eval_count", 0),
                         "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
                     }
-                    return text, token_info
+                    return text, token_info, "ollama"
                 logger.error(f"Ollama retry failed ({retry_resp.status_code})")
                 return _fallback_openai(prompt, "ollama retry failed")
             else:
@@ -100,18 +103,19 @@ def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
         logger.error(f"Ollama error: {exc}")
         return _fallback_openai(prompt, "request error")
 
-    return None, None
+    return None, None, "ollama"
 
 
-def _fallback_openai(prompt: str, reason: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
+def _fallback_openai(prompt: str, reason: str) -> tuple[str, dict[str, int], str] | tuple[None, None, str]:
     if not settings.openai_api_key:
-        return None, None
+        return None, None, "ollama"
 
     logger.warning(f"Falling back to OpenAI due to Ollama {reason}")
-    return call_openai_chat(
+    text, token_info = call_openai_chat(
         prompt,
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,
         model=settings.openai_model_name,
         timeout=settings.openai_timeout,
     )
+    return text, token_info, "openai"

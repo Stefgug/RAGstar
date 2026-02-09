@@ -8,8 +8,12 @@ ollama_fallback_timeout: 5
 chroma_db_path: ./ragstar_db
 github_token: ""
 admin_token: ""
+# OpenAI: generation fallback only
 openai_base_url: https://api.openai.com/v1
 openai_model_name: gpt-4o-mini
-openai_embedding_model_name: text-embedding-3-small
-openai_embedding_dimensions: 768  # Must match the Ollama embedding model dimensions (nomic-embed-text = 768)
 openai_timeout: 30
+# Fireworks: embedding fallback (same nomic-embed-text model as Ollama for semantic compatibility)
+fireworks_base_url: https://api.fireworks.ai/inference/v1
+fireworks_embedding_model_name: nomic-ai/nomic-embed-text-v1.5
+fireworks_embedding_dimensions: 768
+fireworks_timeout: 30

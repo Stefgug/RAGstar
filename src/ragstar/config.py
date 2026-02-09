@@ -7,6 +7,7 @@ import os
 import shutil
 import logging
 import tempfile
+import threading
 
 import requests
 import certifi
@@ -32,23 +33,38 @@ class Settings:
     github_token: str
     admin_token: str
     ollama_fallback_timeout: int
+    # OpenAI: generation fallback only
     openai_api_key: str
     openai_base_url: str
     openai_model_name: str
-    openai_embedding_model_name: str
-    openai_embedding_dimensions: int
     openai_timeout: int
+    # Fireworks: embedding fallback
+    fireworks_api_key: str
+    fireworks_base_url: str
+    fireworks_embedding_model_name: str
+    fireworks_embedding_dimensions: int
+    fireworks_timeout: int
 
 
 # Hardcoded defaults (simple app, rarely changed)
-OLLAMA_EMBEDDING_MODEL_DEFAULT = "mxbai-embed-large"
+OLLAMA_EMBEDDING_MODEL_DEFAULT = "nomic-embed-text"
 OLLAMA_CONTEXT_WINDOW_DEFAULT = 4096  # For text generation (Mistral) - optimized for response time
-OLLAMA_EMBEDDING_CONTEXT_WINDOW_DEFAULT = 2048  # For embeddings (mxbai-embed-large)
+OLLAMA_EMBEDDING_CONTEXT_WINDOW_DEFAULT = 2048  # For embeddings
 OLLAMA_TIMEOUT = 180
 OLLAMA_FALLBACK_TIMEOUT_DEFAULT = 5
 OPENAI_TIMEOUT_DEFAULT = 30
-OPENAI_EMBEDDING_DIMENSIONS_DEFAULT = 768  # Match nomic-embed-text dimensions
+FIREWORKS_TIMEOUT_DEFAULT = 30
+FIREWORKS_EMBEDDING_DIMENSIONS_DEFAULT = 768  # nomic-embed-text native dimension
 CHROMA_COLLECTION_NAME = "repositories"
+
+
+# Thread-local state for tracking which embedding backend was used per request
+_backend_state = threading.local()
+
+
+def get_embedding_backend_used() -> str:
+    """Return the embedding backend used in the current request thread."""
+    return getattr(_backend_state, "embedding_backend", "ollama")
 
 
 def _ensure_db_writable(path: Path) -> None:
@@ -170,20 +186,29 @@ settings = Settings(
         "ollama_fallback_timeout",
         OLLAMA_FALLBACK_TIMEOUT_DEFAULT,
     )),
+    # OpenAI: generation fallback only
     openai_api_key=str(_read_value("OPENAI_API_KEY", "openai_api_key", "")),
     openai_base_url=str(_read_value("OPENAI_BASE_URL", "openai_base_url", "https://api.openai.com/v1")),
     openai_model_name=str(_read_value("OPENAI_MODEL", "openai_model_name", "gpt-4o-mini")),
-    openai_embedding_model_name=str(_read_value(
-        "OPENAI_EMBEDDING_MODEL",
-        "openai_embedding_model_name",
-        "text-embedding-3-small",
-    )),
-    openai_embedding_dimensions=int(_read_value(
-        "OPENAI_EMBEDDING_DIMENSIONS",
-        "openai_embedding_dimensions",
-        OPENAI_EMBEDDING_DIMENSIONS_DEFAULT,
-    )),
     openai_timeout=int(_read_value("OPENAI_TIMEOUT", "openai_timeout", OPENAI_TIMEOUT_DEFAULT)),
+    # Fireworks: embedding fallback
+    fireworks_api_key=str(_read_value("FIREWORKS_API_KEY", "fireworks_api_key", "")),
+    fireworks_base_url=str(_read_value(
+        "FIREWORKS_BASE_URL", "fireworks_base_url", "https://api.fireworks.ai/inference/v1"
+    )),
+    fireworks_embedding_model_name=str(_read_value(
+        "FIREWORKS_EMBEDDING_MODEL",
+        "fireworks_embedding_model_name",
+        "nomic-ai/nomic-embed-text-v1.5",
+    )),
+    fireworks_embedding_dimensions=int(_read_value(
+        "FIREWORKS_EMBEDDING_DIMENSIONS",
+        "fireworks_embedding_dimensions",
+        FIREWORKS_EMBEDDING_DIMENSIONS_DEFAULT,
+    )),
+    fireworks_timeout=int(_read_value(
+        "FIREWORKS_TIMEOUT", "fireworks_timeout", FIREWORKS_TIMEOUT_DEFAULT
+    )),
 )
 
 
@@ -234,6 +259,9 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
         if not input:
             return []
 
+        # Default to ollama; overwritten if fallback is used
+        _backend_state.embedding_backend = "ollama"
+
         embeddings: list[list[float]] = []
         for text in input:
             try:
@@ -248,26 +276,26 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
                     verify=get_ollama_verify(),
                 )
             except requests.exceptions.Timeout as exc:
-                fallback = _fallback_openai_embedding(text, "timeout")
+                fallback = _fallback_fireworks_embedding(text, "timeout")
                 if fallback is not None:
                     embeddings.append(fallback)
                     continue
                 raise RuntimeError("Ollama embeddings request timed out") from exc
             except requests.exceptions.ConnectionError as exc:
-                fallback = _fallback_openai_embedding(text, "connection error")
+                fallback = _fallback_fireworks_embedding(text, "connection error")
                 if fallback is not None:
                     embeddings.append(fallback)
                     continue
                 raise RuntimeError("Cannot connect to Ollama embeddings service") from exc
             except Exception as exc:  # pragma: no cover - network error
-                fallback = _fallback_openai_embedding(text, "request error")
+                fallback = _fallback_fireworks_embedding(text, "request error")
                 if fallback is not None:
                     embeddings.append(fallback)
                     continue
                 raise RuntimeError(f"Ollama embeddings request failed: {exc}") from exc
 
             if resp.status_code != 200:
-                fallback = _fallback_openai_embedding(text, f"status {resp.status_code}")
+                fallback = _fallback_fireworks_embedding(text, f"status {resp.status_code}")
                 if fallback is not None:
                     embeddings.append(fallback)
                     continue
@@ -279,7 +307,7 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
             payload = resp.json()
             embedding = payload.get("embedding")
             if not embedding:
-                fallback = _fallback_openai_embedding(text, "missing embedding")
+                fallback = _fallback_fireworks_embedding(text, "missing embedding")
                 if fallback is not None:
                     embeddings.append(fallback)
                     continue
@@ -290,18 +318,20 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
         return embeddings
 
 
-def _fallback_openai_embedding(text: str, reason: str) -> list[float] | None:
-    if not settings.openai_api_key:
+def _fallback_fireworks_embedding(text: str, reason: str) -> list[float] | None:
+    if not settings.fireworks_api_key:
         return None
 
-    logger.warning(f"Ollama embeddings failed ({reason}); falling back to OpenAI")
+    logger.warning(f"Ollama embeddings failed ({reason}); falling back to Fireworks AI")
+    _backend_state.embedding_backend = "fireworks"
+    # Fireworks API is OpenAI-compatible, reuse the same HTTP helper
     embeddings = call_openai_embeddings(
         [text],
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_base_url,
-        model=settings.openai_embedding_model_name,
-        timeout=settings.openai_timeout,
-        dimensions=settings.openai_embedding_dimensions,
+        api_key=settings.fireworks_api_key,
+        base_url=settings.fireworks_base_url,
+        model=settings.fireworks_embedding_model_name,
+        timeout=settings.fireworks_timeout,
+        dimensions=settings.fireworks_embedding_dimensions,
     )
     if not embeddings:
         return None

@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from .config import (
     settings,
     clear_database,
+    get_embedding_backend_used,
     CHROMA_DB_PATH,
 )
 from .index import build_index, iter_build_index
@@ -31,10 +32,15 @@ app = FastAPI(title="RAGstar API", version="0.1.0")
 
 @app.on_event("startup")
 def _pull_ollama_models_on_startup() -> None:
-    if settings.openai_api_key.strip():
-        logger.info("OpenAI fallback is configured (OPENAI_API_KEY present)")
+    if settings.fireworks_api_key.strip():
+        logger.info("Fireworks embedding fallback is configured (FIREWORKS_API_KEY present)")
     else:
-        logger.warning("OpenAI fallback is NOT configured (no OPENAI_API_KEY)")
+        logger.warning("Fireworks embedding fallback is NOT configured (no FIREWORKS_API_KEY)")
+
+    if settings.openai_api_key.strip():
+        logger.info("OpenAI generation fallback is configured (OPENAI_API_KEY present)")
+    else:
+        logger.warning("OpenAI generation fallback is NOT configured (no OPENAI_API_KEY)")
 
     models = [settings.ollama_model_name, settings.ollama_embedding_model_name]
     unique_models = [name for idx, name in enumerate(models) if name and name not in models[:idx]]
@@ -77,7 +83,8 @@ def get_config() -> dict[str, Any]:
     return {
         "embedding_model": settings.ollama_embedding_model_name,
         "ollama_model_name": settings.ollama_model_name,
-        "openai_fallback": bool(settings.openai_api_key.strip()),
+        "fireworks_fallback": bool(settings.fireworks_api_key.strip()),
+        "openai_generation_fallback": bool(settings.openai_api_key.strip()),
     }
 
 
@@ -170,6 +177,7 @@ def ask_question(
 ) -> dict[str, Any]:
     """Answer a question using the indexed repository summaries."""
     results = search_repositories(question, num_results=num_results)
+    embedding_backend = get_embedding_backend_used()
 
     # Build context with repository information (optimized for token efficiency)
     repo_contexts = []
@@ -187,7 +195,7 @@ def ask_question(
         f"Answer concisely with the most relevant repository URL(s):"
     )
 
-    answer, token_info = call_ollama(prompt)
+    answer, token_info, generation_backend = call_ollama(prompt)
     if answer is None:
         raise HTTPException(status_code=502, detail="Failed to get answer from Ollama")
 
@@ -196,4 +204,8 @@ def ask_question(
         "answer": answer,
         "sources": results,
         "tokens": token_info,
+        "backend": {
+            "embedding": embedding_backend,
+            "generation": generation_backend,
+        },
     }

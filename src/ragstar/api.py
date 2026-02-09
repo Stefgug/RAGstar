@@ -31,6 +31,11 @@ app = FastAPI(title="RAGstar API", version="0.1.0")
 
 @app.on_event("startup")
 def _pull_ollama_models_on_startup() -> None:
+    if settings.openai_api_key.strip():
+        logger.info("OpenAI fallback is configured (OPENAI_API_KEY present)")
+    else:
+        logger.warning("OpenAI fallback is NOT configured (no OPENAI_API_KEY)")
+
     models = [settings.ollama_model_name, settings.ollama_embedding_model_name]
     unique_models = [name for idx, name in enumerate(models) if name and name not in models[:idx]]
     for model_name in unique_models:
@@ -72,6 +77,7 @@ def get_config() -> dict[str, Any]:
     return {
         "embedding_model": settings.ollama_embedding_model_name,
         "ollama_model_name": settings.ollama_model_name,
+        "openai_fallback": bool(settings.openai_api_key.strip()),
     }
 
 

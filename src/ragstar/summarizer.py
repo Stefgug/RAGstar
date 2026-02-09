@@ -88,7 +88,7 @@ Do not include URLs, HTML tags, Markdown formatting, or code fences. Output plai
 """
 
     logger.debug(f"Generating summary with LLM for {repo_name}")
-    summary_text = call_ollama(prompt)
+    summary_text, _ = call_ollama(prompt)
     if summary_text:
         return summary_text
 

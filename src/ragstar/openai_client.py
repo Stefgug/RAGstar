@@ -80,6 +80,7 @@ def call_openai_embeddings(
     base_url: str,
     model: str,
     timeout: int,
+    dimensions: int | None = None,
 ) -> list[list[float]] | None:
     if not api_key:
         logger.warning("OpenAI API key is not configured; fallback is disabled")
@@ -90,6 +91,8 @@ def call_openai_embeddings(
         "model": model,
         "input": texts,
     }
+    if dimensions is not None:
+        payload["dimensions"] = dimensions
 
     try:
         resp = requests.post(

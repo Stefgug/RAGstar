@@ -1,4 +1,4 @@
-"""Shared Ollama client helpers."""
+"""Shared LLM client helpers (Ollama primary, OpenAI fallback)."""
 
 import logging
 

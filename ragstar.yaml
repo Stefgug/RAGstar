@@ -9,6 +9,6 @@ chroma_db_path: ./ragstar_db
 github_token: ""
 admin_token: ""
 openai_base_url: https://api.openai.com/v1
-openai_model_name: gpt-5-mini
+openai_model_name: gpt-4o-mini
 openai_embedding_model_name: text-embedding-3-small
 openai_timeout: 30

@@ -14,6 +14,8 @@ from chromadb import PersistentClient
 from chromadb.api.types import EmbeddingFunction, Documents, Embeddings
 import yaml
 
+from .openai_client import call_openai_embeddings
+
 # Module logger - configuration should be done at application level
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,12 @@ class Settings:
     ollama_embedding_context_window: int
     github_token: str
     admin_token: str
+    ollama_fallback_timeout: int
+    openai_api_key: str
+    openai_base_url: str
+    openai_model_name: str
+    openai_embedding_model_name: str
+    openai_timeout: int
 
 
 # Hardcoded defaults (simple app, rarely changed)
@@ -36,6 +44,8 @@ OLLAMA_EMBEDDING_MODEL_DEFAULT = "mxbai-embed-large"
 OLLAMA_CONTEXT_WINDOW_DEFAULT = 4096  # For text generation (Mistral) - optimized for response time
 OLLAMA_EMBEDDING_CONTEXT_WINDOW_DEFAULT = 2048  # For embeddings (mxbai-embed-large)
 OLLAMA_TIMEOUT = 180
+OLLAMA_FALLBACK_TIMEOUT_DEFAULT = 5
+OPENAI_TIMEOUT_DEFAULT = 30
 CHROMA_COLLECTION_NAME = "repositories"
 
 
@@ -153,6 +163,20 @@ settings = Settings(
     )),
     github_token=str(_read_value("RAGSTAR_GITHUB_TOKEN", "github_token", "")),
     admin_token=str(_read_value("RAGSTAR_ADMIN_TOKEN", "admin_token", "")),
+    ollama_fallback_timeout=int(_read_value(
+        "RAGSTAR_OLLAMA_FALLBACK_TIMEOUT",
+        "ollama_fallback_timeout",
+        OLLAMA_FALLBACK_TIMEOUT_DEFAULT,
+    )),
+    openai_api_key=str(_read_value("OPENAI_API_KEY", "openai_api_key", "")),
+    openai_base_url=str(_read_value("OPENAI_BASE_URL", "openai_base_url", "https://api.openai.com/v1")),
+    openai_model_name=str(_read_value("OPENAI_MODEL", "openai_model_name", "gpt-5-mini")),
+    openai_embedding_model_name=str(_read_value(
+        "OPENAI_EMBEDDING_MODEL",
+        "openai_embedding_model_name",
+        "text-embedding-3-small",
+    )),
+    openai_timeout=int(_read_value("OPENAI_TIMEOUT", "openai_timeout", OPENAI_TIMEOUT_DEFAULT)),
 )
 
 
@@ -216,12 +240,30 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
                     timeout=self.timeout,
                     verify=get_ollama_verify(),
                 )
+            except requests.exceptions.Timeout as exc:
+                fallback = _fallback_openai_embedding(text, "timeout")
+                if fallback is not None:
+                    embeddings.append(fallback)
+                    continue
+                raise RuntimeError("Ollama embeddings request timed out") from exc
             except requests.exceptions.ConnectionError as exc:
+                fallback = _fallback_openai_embedding(text, "connection error")
+                if fallback is not None:
+                    embeddings.append(fallback)
+                    continue
                 raise RuntimeError("Cannot connect to Ollama embeddings service") from exc
             except Exception as exc:  # pragma: no cover - network error
+                fallback = _fallback_openai_embedding(text, "request error")
+                if fallback is not None:
+                    embeddings.append(fallback)
+                    continue
                 raise RuntimeError(f"Ollama embeddings request failed: {exc}") from exc
 
             if resp.status_code != 200:
+                fallback = _fallback_openai_embedding(text, f"status {resp.status_code}")
+                if fallback is not None:
+                    embeddings.append(fallback)
+                    continue
                 raise RuntimeError(
                     "Ollama embeddings request failed "
                     f"({resp.status_code}): {resp.text}"
@@ -230,11 +272,32 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
             payload = resp.json()
             embedding = payload.get("embedding")
             if not embedding:
+                fallback = _fallback_openai_embedding(text, "missing embedding")
+                if fallback is not None:
+                    embeddings.append(fallback)
+                    continue
                 raise RuntimeError("Ollama embeddings response missing 'embedding'")
 
             embeddings.append(embedding)
 
         return embeddings
+
+
+def _fallback_openai_embedding(text: str, reason: str) -> list[float] | None:
+    if not settings.openai_api_key:
+        return None
+
+    logger.warning(f"Ollama embeddings failed ({reason}); falling back to OpenAI")
+    embeddings = call_openai_embeddings(
+        [text],
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        model=settings.openai_embedding_model_name,
+        timeout=settings.openai_timeout,
+    )
+    if not embeddings:
+        return None
+    return embeddings[0]
 
 
 def get_collection():
@@ -245,7 +308,7 @@ def get_collection():
     embedding_fn = OllamaEmbeddingFunction(
         embeddings_url=embeddings_url,
         model_name=settings.ollama_embedding_model_name,
-        timeout=OLLAMA_TIMEOUT,
+        timeout=settings.ollama_fallback_timeout,
         headers=get_ollama_headers(),
         context_window=settings.ollama_embedding_context_window,
     )

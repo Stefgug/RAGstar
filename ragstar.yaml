@@ -4,6 +4,11 @@ ollama_url: http://ollama:11434/api/generate
 ollama_model_name: mistral
 ollama_embedding_model_name: nomic-embed-text
 ollama_context_window: 4096  # Optimized from 8192 for faster response times
+ollama_fallback_timeout: 5
 chroma_db_path: ./ragstar_db
 github_token: ""
 admin_token: ""
+openai_base_url: https://api.openai.com/v1
+openai_model_name: gpt-5-mini
+openai_embedding_model_name: text-embedding-3-small
+openai_timeout: 30

@@ -53,6 +53,12 @@ spec:
                   name: ragstar-secrets
                   key: RAGSTAR_GITHUB_TOKEN
                   optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ragstar-secrets
+                  key: OPENAI_API_KEY
+                  optional: true
             - name: RAGSTAR_LOG_LEVEL
               value: INFO
             - name: OLLAMA_CA_CERT

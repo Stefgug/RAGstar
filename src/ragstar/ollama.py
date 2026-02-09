@@ -5,6 +5,7 @@ import logging
 import requests
 
 from .config import settings, OLLAMA_TIMEOUT, get_ollama_headers, get_ollama_verify
+from .openai_client import call_openai_chat
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def pull_ollama_model(model_name: str | None = None) -> bool:
 
 
 def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
-    """Call local Ollama model. Returns (text, token_info) or (None, None) on failure."""
+    """Call local Ollama model with OpenAI fallback on failure."""
     payload = {
         "model": settings.ollama_model_name,
         "prompt": prompt,
@@ -46,7 +47,7 @@ def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
             settings.ollama_url,
             json=payload,
             headers=get_ollama_headers(),
-            timeout=OLLAMA_TIMEOUT,
+            timeout=settings.ollama_fallback_timeout,
             verify=get_ollama_verify(),
         )
         if resp.status_code == 200:
@@ -68,7 +69,7 @@ def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
                     settings.ollama_url,
                     json=payload,
                     headers=get_ollama_headers(),
-                    timeout=OLLAMA_TIMEOUT,
+                    timeout=settings.ollama_fallback_timeout,
                     verify=get_ollama_verify(),
                 )
                 if retry_resp.status_code == 200:
@@ -81,15 +82,36 @@ def call_ollama(prompt: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
                     }
                     return text, token_info
                 logger.error(f"Ollama retry failed ({retry_resp.status_code})")
+                return _fallback_openai(prompt, "ollama retry failed")
             else:
                 logger.error(f"Failed to pull model {settings.ollama_model_name}")
+                return _fallback_openai(prompt, "ollama model pull failed")
         else:
             logger.error(f"Ollama request failed ({resp.status_code})")
+            return _fallback_openai(prompt, f"status {resp.status_code}")
 
+    except requests.exceptions.Timeout:
+        logger.warning("Ollama request timed out")
+        return _fallback_openai(prompt, "timeout")
     except requests.exceptions.ConnectionError:
         logger.warning("Cannot connect to Ollama service")
-        return None, None
+        return _fallback_openai(prompt, "connection error")
     except Exception as exc:  # pragma: no cover - best-effort network
         logger.error(f"Ollama error: {exc}")
+        return _fallback_openai(prompt, "request error")
 
     return None, None
+
+
+def _fallback_openai(prompt: str, reason: str) -> tuple[str, dict[str, int]] | tuple[None, None]:
+    if not settings.openai_api_key:
+        return None, None
+
+    logger.warning(f"Falling back to OpenAI due to Ollama {reason}")
+    return call_openai_chat(
+        prompt,
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        model=settings.openai_model_name,
+        timeout=settings.openai_timeout,
+    )

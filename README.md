@@ -20,6 +20,23 @@ Demo: https://stefgug.dev/portfolio/RAGstar
 - Embeddings: `mxbai-embed-large` via Ollama.
 - Summaries and query: `mistral` via Ollama.
 
+## OpenAI fallback
+
+If Ollama is unavailable or too slow (over 5 seconds), RAGstar can fall back to OpenAI for
+generation and embeddings. For local testing, set `OPENAI_API_KEY` in your environment:
+
+```bash
+export OPENAI_API_KEY=your_key_here
+```
+
+Optional fallback settings live in [ragstar.yaml](ragstar.yaml):
+
+- `openai_base_url` (default: `https://api.openai.com/v1`)
+- `openai_model_name` (default: `gpt-5-mini`)
+- `openai_embedding_model_name` (default: `text-embedding-3-small`)
+- `openai_timeout` (default: `30`)
+- `ollama_fallback_timeout` (default: `5`)
+
 ## Project relationships
 
 - RAGstar (this repo) is the backend and the core of the system.
@@ -35,7 +52,7 @@ RAGstar is deployed via GitHub Actions:
 
 ## Hosting
 
-Both containers (RAGstar + Flaskstar) are currently deployed to a GKE cluster on GCP. 
+Both containers (RAGstar + Flaskstar) are currently deployed to a GKE cluster on GCP.
 
 
 
